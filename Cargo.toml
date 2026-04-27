@@ -1,12 +1,23 @@
-[workspace]
-members = [
-  "server",
-  "syntax",
-  "analysis",
-]
-resolver = "2"
+[package]
+name = "achitek-ls"
+version = "0.1.0"
+edition = '2024'
+rust-version = "1.90.0"
+description = "achitekfile language server"
+readme = "README.md"
+repository = "https://github.com/achitek-org/achitek-ls"
+license = "MIT"
+keywords = ["achitekfile", "lsp", "language-server"]
+categories = ["command-line-utilities"]
 
-[workspace.dependencies]
+[[bin]]
+name = "achitek-ls"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
 anyhow = "1.0.102"
 thiserror = "2.0.18"
 lsp-server = "0.7.9"
