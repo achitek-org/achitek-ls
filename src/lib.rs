@@ -1,7 +1,10 @@
 //! Lib
 
-mod analysis;
+pub mod analysis;
 #[doc(hidden)]
 pub mod arguments;
+pub mod capabilities;
 mod server;
-mod syntax;
+pub mod syntax;
+
+pub use server::Server;
