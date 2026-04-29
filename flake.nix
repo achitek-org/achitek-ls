@@ -65,6 +65,10 @@
           }
         );
 
+        achitek-ls-fmt = craneLib.cargoFmt {
+          src = commonArgs.src;
+        };
+
         achitek-ls = craneLib.buildPackage (
           commonArgs
           // {
@@ -94,6 +98,7 @@
           inherit
             achitek-ls
             achitek-ls-clippy
+            achitek-ls-fmt
             achitek-ls-test
             ;
 
@@ -105,6 +110,7 @@
 
           packages = with pkgs; [
             achitek-ls
+            cargo-dist
             cargo-nextest
             cargo-watch
             just
