@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/achitek-org/achitek-ls/compare/v0.1.0...v0.1.1)
+
+### 🐛 Bug Fixes
+
+
+- Default to stdio if communications channel not provided - ([c69e8d3](https://github.com/achitek-org/achitek-ls/commit/c69e8d3aa832da603dc6ed9a6588f0d812c8b658))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Lint - ([b1a5e2d](https://github.com/achitek-org/achitek-ls/commit/b1a5e2da3d419f8ed0cf37087a3e49fde040c0d6))
+- Update github token for release-plz release - ([537e241](https://github.com/achitek-org/achitek-ls/commit/537e241f58aad789c60e4068c934feb3cf2e7964))
+
+
 ## [0.1.0]
 
 ### ⛰️ Features
