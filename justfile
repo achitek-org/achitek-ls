@@ -45,5 +45,6 @@ clean:
 # Run all pre-commit checks
 pre-commit: fmt-check clippy test check
 
-# Run all CI checks (alias for pre-commit)
-ci: pre-commit
+# Run all CI checks
+ci:
+    nix flake check

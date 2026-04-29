@@ -10,9 +10,10 @@ use lexopt::{
 use std::{fmt::Display, path::PathBuf};
 
 /// Communication channel used by the language server.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Default)]
 pub enum CommunicationsChannel {
     /// Use standard input and standard output for JSON-RPC messages.
+    #[default]
     Stdio,
     /// Use a named pipe on Windows or a Unix socket file on Linux and macOS.
     Pipe { path: PathBuf },
@@ -20,12 +21,6 @@ pub enum CommunicationsChannel {
     Socket { port: u16 },
     /// Use Node.js IPC when the server is launched from a Node process.
     NodeIpc,
-}
-
-impl Default for CommunicationsChannel {
-    fn default() -> Self {
-        Self::Stdio
-    }
 }
 
 impl Display for CommunicationsChannel {
