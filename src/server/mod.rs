@@ -71,77 +71,83 @@ impl Server {
             mut documents,
         } = self;
 
-        let init_value = serde_json::to_value(InitializeResult {
-            capabilities: capabilities::make(),
-            server_info: Some(ServerInfo {
-                name: env!("CARGO_PKG_NAME").to_owned(),
-                version: Some(env!("CARGO_PKG_VERSION").to_owned()),
-            }),
-        })?;
+        let init_value = initialize_result_value()?;
 
         tracing::info!("waiting for LSP initialize request");
-        let _init_params = match connection.initialize(init_value) {
-            Ok(params) => {
-                tracing::info!("LSP initialize handshake completed");
-                params
-            }
+        let (init_id, init_params) = match connection.initialize_start() {
+            Ok(parts) => parts,
             Err(err) => {
                 if err.channel_is_disconnected() {
-                    tracing::warn!("client disconnected during initialize");
+                    tracing::warn!(
+                        "client disconnected during the beginning of initialization ceremony"
+                    );
                     io_threads.join()?;
                 }
                 return Err(err.into());
             }
         };
+        match connection.initialize_finish(init_id, init_value) {
+            Ok(()) => {
+                tracing::info!("LSP initialize handshake completed");
+            }
+            Err(err) => {
+                if err.channel_is_disconnected() {
+                    tracing::warn!("client disconnected during the end of initialization ceremony");
+                    io_threads.join()?;
+                }
+                return Err(err.into());
+            }
+        }
+        let _init_params = init_params;
 
         for msg in &connection.receiver {
             match msg {
-                Message::Request(req) => {
-                    tracing::debug!(method = %req.method, id = ?req.id, "received LSP request");
-                    if connection.handle_shutdown(&req)? {
+                Message::Request(request) => {
+                    tracing::debug!(method = %request.method, id = ?request.id, "received LSP request");
+                    if connection.handle_shutdown(&request)? {
                         tracing::info!("received LSP shutdown request");
                         break;
                     }
 
-                    match req.method.as_str() {
+                    match request.method.as_str() {
                         "textDocument/documentSymbol" => {
-                            handlers::document_symbol::handle(&connection, &req, &documents)?;
+                            handlers::document_symbol::handle(&connection, &request, &documents)?;
                         }
                         "textDocument/formatting" => {
-                            handlers::formatting::handle(&connection, &req, &documents)?;
+                            handlers::formatting::handle(&connection, &request, &documents)?;
                         }
                         "textDocument/foldingRange" => {
-                            handlers::folding_range::handle(&connection, &req, &documents)?;
+                            handlers::folding_range::handle(&connection, &request, &documents)?;
                         }
                         "textDocument/selectionRange" => {
-                            handlers::selection_range::handle(&connection, &req, &documents)?;
+                            handlers::selection_range::handle(&connection, &request, &documents)?;
                         }
                         "textDocument/hover" => {
-                            handlers::hover::handle(&connection, &req, &documents)?;
+                            handlers::hover::handle(&connection, &request, &documents)?;
                         }
                         "textDocument/completion" => {
-                            handlers::completion::handle(&connection, &req, &documents)?;
+                            handlers::completion::handle(&connection, &request, &documents)?;
                         }
                         "textDocument/definition" => {
-                            handlers::definition::handle(&connection, &req, &documents)?;
+                            handlers::definition::handle(&connection, &request, &documents)?;
                         }
                         "textDocument/references" => {
-                            handlers::references::handle(&connection, &req, &documents)?;
+                            handlers::references::handle(&connection, &request, &documents)?;
                         }
                         "textDocument/rename" => {
-                            handlers::rename::handle(&connection, &req, &documents)?;
+                            handlers::rename::handle(&connection, &request, &documents)?;
                         }
                         "textDocument/prepareRename" => {
-                            handlers::prepare_rename::handle(&connection, &req, &documents)?;
+                            handlers::prepare_rename::handle(&connection, &request, &documents)?;
                         }
                         "workspace/symbol" => {
-                            handlers::workspace_symbol::handle(&connection, &req, &documents)?;
+                            handlers::workspace_symbol::handle(&connection, &request, &documents)?;
                         }
                         _ => {
-                            tracing::warn!(method = %req.method, "unable to handle LSP request");
+                            tracing::warn!(method = %request.method, "unable to handle LSP request");
 
                             let response = Response {
-                                id: req.id.clone(),
+                                id: request.id.clone(),
                                 result: None,
                                 error: None,
                             };
@@ -149,24 +155,35 @@ impl Server {
                             connection.sender.send(Message::Response(response))?;
                         }
                     }
+
+                    tracing::debug!(method = %request.method, "successfully handled received LSP request");
                 }
-                Message::Notification(note) => match note.method.as_str() {
-                    "textDocument/didOpen" => {
-                        tracing::debug!(method = %note.method, "received LSP notification");
-                        handlers::did_open::handle(&connection, &note, &mut documents)?;
+                Message::Notification(notification) => {
+                    match notification.method.as_str() {
+                        "textDocument/didOpen" => {
+                            handlers::did_open::handle(&connection, &notification, &mut documents)?;
+                        }
+                        "textDocument/didChange" => {
+                            handlers::did_change::handle(
+                                &connection,
+                                &notification,
+                                &mut documents,
+                            )?;
+                        }
+                        "textDocument/didClose" => {
+                            handlers::did_close::handle(
+                                &connection,
+                                &notification,
+                                &mut documents,
+                            )?;
+                        }
+                        _ => {
+                            tracing::debug!(method = %notification.method, "ignoring LSP notification");
+                        }
                     }
-                    "textDocument/didChange" => {
-                        tracing::debug!(method = %note.method, "received LSP notification");
-                        handlers::did_change::handle(&connection, &note, &mut documents)?;
-                    }
-                    "textDocument/didClose" => {
-                        tracing::debug!(method = %note.method, "received LSP notification");
-                        handlers::did_close::handle(&connection, &note, &mut documents)?;
-                    }
-                    _ => {
-                        tracing::debug!(method = %note.method, "ignoring LSP notification");
-                    }
-                },
+
+                    tracing::debug!(method = %notification.method, "successfully handled received LSP notification");
+                }
                 Message::Response(resp) => {
                     tracing::debug!(response = ?resp, "received unexpected LSP response");
                 }
@@ -194,5 +211,33 @@ impl Server {
                 std::process::exit(0);
             }
         }
+    }
+}
+
+fn initialize_result_value() -> anyhow::Result<serde_json::Value> {
+    Ok(serde_json::to_value(InitializeResult {
+        capabilities: capabilities::make(),
+        server_info: Some(ServerInfo {
+            name: env!("CARGO_PKG_NAME").to_owned(),
+            version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+        }),
+    })?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::initialize_result_value;
+
+    #[test]
+    fn initialize_result_advertises_capabilities_at_lsp_top_level() -> anyhow::Result<()> {
+        let value = initialize_result_value()?;
+
+        assert_eq!(value["capabilities"]["hoverProvider"], true);
+        assert_eq!(value["capabilities"]["definitionProvider"], true);
+        assert_eq!(value["capabilities"]["referencesProvider"], true);
+        assert!(value["capabilities"]["renameProvider"]["prepareProvider"].as_bool() == Some(true));
+        assert!(value["capabilities"]["capabilities"].is_null());
+
+        Ok(())
     }
 }
