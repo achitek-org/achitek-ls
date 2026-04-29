@@ -10,6 +10,7 @@ use lexopt::{
 use std::{fmt::Display, path::PathBuf};
 
 /// Communication channel used by the language server.
+#[derive(Debug, PartialEq, Eq)]
 pub enum CommunicationsChannel {
     /// Use standard input and standard output for JSON-RPC messages.
     Stdio,
@@ -19,6 +20,12 @@ pub enum CommunicationsChannel {
     Socket { port: u16 },
     /// Use Node.js IPC when the server is launched from a Node process.
     NodeIpc,
+}
+
+impl Default for CommunicationsChannel {
+    fn default() -> Self {
+        Self::Stdio
+    }
 }
 
 impl Display for CommunicationsChannel {
@@ -56,9 +63,12 @@ ARGS:
 /// `-h`, `--version`, or `-v` is supplied.
 #[doc(hidden)]
 pub fn parse() -> Result<Args, lexopt::Error> {
+    parse_parser(Parser::from_env())
+}
+
+fn parse_parser(mut parser: Parser) -> Result<Args, lexopt::Error> {
     let mut version = "".to_string();
-    let mut channel = None;
-    let mut parser = Parser::from_env();
+    let mut channel = Some(CommunicationsChannel::default());
 
     while let Some(arg) = parser.next()? {
         match arg {
@@ -77,4 +87,24 @@ pub fn parse() -> Result<Args, lexopt::Error> {
     }
 
     Ok(Args { version, channel })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CommunicationsChannel, parse_parser};
+    use lexopt::Parser;
+
+    #[test]
+    fn defaults_to_stdio_when_no_channel_is_provided() {
+        let args = parse_parser(Parser::from_args([] as [&str; 0])).unwrap();
+
+        assert_eq!(args.channel, Some(CommunicationsChannel::Stdio));
+    }
+
+    #[test]
+    fn keeps_explicit_stdio_channel() {
+        let args = parse_parser(Parser::from_args(["--stdio"])).unwrap();
+
+        assert_eq!(args.channel, Some(CommunicationsChannel::Stdio));
+    }
 }

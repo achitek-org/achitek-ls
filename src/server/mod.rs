@@ -48,8 +48,8 @@ pub struct Server {
 impl Server {
     /// Creates a server for the requested communication channel.
     ///
-    /// Currently only stdio is supported. Unsupported or missing channels log
-    /// an error and exit the process.
+    /// Currently only stdio is supported. Missing channels default to stdio.
+    /// Unsupported channels log an error and exit the process.
     pub fn new(channel: Option<CommunicationsChannel>) -> Self {
         let (connection, io_threads) = Server::resolve_communications_channel(channel);
         Self {
@@ -184,20 +184,15 @@ impl Server {
     fn resolve_communications_channel(
         channel: Option<CommunicationsChannel>,
     ) -> (Connection, IoThreads) {
-        if let Some(chan) = channel {
-            match chan {
-                CommunicationsChannel::Stdio => {
-                    tracing::info!("using stdio communication channel");
-                    Connection::stdio()
-                }
-                _ => {
-                    tracing::error!("server does not support communication channel: {}", chan);
-                    std::process::exit(0);
-                }
+        match channel.unwrap_or_default() {
+            CommunicationsChannel::Stdio => {
+                tracing::info!("using stdio communication channel");
+                Connection::stdio()
             }
-        } else {
-            tracing::error!("no communication channel provided");
-            std::process::exit(0)
+            chan => {
+                tracing::error!("server does not support communication channel: {}", chan);
+                std::process::exit(0);
+            }
         }
     }
 }
