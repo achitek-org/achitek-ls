@@ -1,3 +1,8 @@
+//! Command-line argument types for configuring the language server.
+//!
+//! This module documents the command-line concepts that `achitek-ls` accepts,
+//! including the communication channel selected by the client or editor integration.
+
 use lexopt::{
     Arg::{Long, Short},
     Parser,
@@ -35,6 +40,7 @@ pub struct Args {
     pub channel: Option<CommunicationsChannel>,
 }
 
+#[doc(hidden)]
 const HELP_TEXT: &str = r#"
 Usage: achitek-ls [ARGS]
 
@@ -48,6 +54,7 @@ ARGS:
 ///
 /// Prints help or version information and exits the process when `--help`,
 /// `-h`, `--version`, or `-v` is supplied.
+#[doc(hidden)]
 pub fn parse() -> Result<Args, lexopt::Error> {
     let mut version = "".to_string();
     let mut channel = None;

@@ -102,15 +102,15 @@ just clippy
 
 Before making architectural or feature-level changes, read:
 
-- [Architecture](ARCHITECTURE.md)
+- [Architecture](docs/ARCHITECTURE.md)
   Describes the active crate layout, module boundaries, request flow, document
   state, template awareness, and logging.
-- [Capabilities](CAPABILITIES.md)
+- [Capabilities](docs/CAPABILITIES.md)
   Tracks implemented LSP capabilities and useful future capabilities.
 
-Use `CAPABILITIES.md` when looking for potential features to implement. It is
-also a good place to update when a change adds, removes, or meaningfully changes
-an editor capability.
+Use `docs/CAPABILITIES.md` when looking for potential features to implement. It
+is also a good place to update when a change adds, removes, or meaningfully
+changes an editor capability.
 
 ## Development Notes
 

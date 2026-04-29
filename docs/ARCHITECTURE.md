@@ -1,78 +1,84 @@
-# Architecture
+# Architecture Overview
 
-This document describes the current crate layout, module responsibilities, and
-request flow for the Achitekfile language server.
+This document is a living overview of the `achitek-ls` codebase. It's meant
+for humans and agents who want to understand the project quickly, navigate the source with
+confidence, and make changes without losing the architectural thread. Update it
+as the codebase evolves.
 
-## Crate Structure
+## Table of Contents
 
-The current package exposes one library crate and one binary:
+- [1. Project Structure](#1-project-structure)
+- [2. High-Level System Diagram](#2-high-level-system-diagram)
+- [3. Core Components](#3-core-components)
+  - [3.1. Editor Client](#31-editor-client)
+  - [3.2. Language Server Binary](#32-language-server-binary)
+  - [3.3. Server Runtime](#33-server-runtime)
+  - [3.4. Analysis Layer](#34-analysis-layer)
+  - [3.5. Syntax Layer](#35-syntax-layer)
+- [4. Development & Testing Environment](#4-development--testing-environment)
+- [5. Future Considerations / Roadmap](#5-future-considerations--roadmap)
 
-- `src/main.rs`
-  Parses command-line arguments, initializes logging, constructs the server, and
-  runs it.
-- `src/server`
-  Owns LSP protocol handling, editor communication, document lifecycle, and
-  in-memory server state. Request and notification handling is split into
-  focused modules under `src/server/handlers`.
-- `src/analysis.rs`
-  Owns editor-facing language analysis. It consumes parsed syntax trees and
-  produces diagnostics, symbols, hover text, completions, definitions,
-  references, and rename information.
-- `src/syntax.rs`
-  Owns parsing Achitek source with Tree-sitter, source ranges, syntax-tree
-  wrappers, and syntax-level errors.
-- `src/capabilities.rs`
-  Defines the LSP capabilities advertised during initialization.
-- `src/arguments.rs`
-  Parses command-line options, including the communication channel.
+## 1. Project Structure
 
-The old `server`, `analysis`, and `syntax` workspace directories remain as
-legacy reference material during the refactor. The active implementation lives
-under `src`.
+`achitek-ls` is a Rust language server package with a single binary and
+library code. The binary is the user-facing interface; the library target
+exists to share implementation code with `src/main.rs`. Most internal modules
+are hidden from generated Rust documentation unless they become a deliberate
+public API.
 
-The Achitek Tree-sitter grammar itself lives outside this repository and is used
-through the `tree-sitter-achitekfile` dependency.
+```text
+achitek-ls/
+├── src/
+│   ├── main.rs                 # Binary entry point, logging setup, server startup
+│   ├── lib.rs                  # Library wiring for the binary and rustdoc visibility
+│   ├── arguments.rs            # Command-line argument types and parser
+│   ├── capabilities.rs         # LSP capabilities advertised during initialize
+│   ├── syntax.rs               # Tree-sitter parsing, source ranges, syntax errors
+│   ├── analysis.rs             # DSL diagnostics, symbols, hover, completion, navigation
+│   └── server/
+│       ├── mod.rs              # LSP lifecycle, document store, dispatch loop
+│       ├── utils.rs            # Shared template-aware helpers
+│       └── handlers/           # One module per LSP request or notification group
+├── docs/
+│   ├── ARCHITECTURE.md         # This document
+│   └── CAPABILITIES.md         # Supported and planned editor capabilities
+├── CONTRIBUTING.md             # Local setup, commands, tests, and contribution notes
+├── README.md                   # Project overview, usage, logging, and doc links
+├── Cargo.toml                  # Rust package metadata and dependencies
+├── flake.nix                   # Reproducible Nix development environment
+├── justfile                    # Common development commands
+└── lefthook.yml                # Git hook configuration
+```
 
-## Dependency Direction
+## 2. High-Level System Diagram
 
-The intended dependency layering is:
+At runtime, an editor or LSP client launches `achitek-ls`, usually over stdio.
+The server receives LSP messages, keeps an in-memory copy of open documents,
+analyzes Achitekfile source, optionally scans nearby `.tera` templates, and
+responds with diagnostics or editor feature data.
 
-`server -> analysis -> syntax -> tree-sitter-achitekfile`
+```text
+[Editor / LSP Client]
+        |
+        | JSON-RPC over stdio
+        v
+[achitek-ls server]
+        |
+        +--> [In-memory open documents]
+        |
+        +--> [analysis] --> [syntax] --> [tree-sitter-achitekfile]
+        |
+        +--> [nearby .tera template files]
+```
 
-This direction matters:
-
-- `server` should know about LSP, but not Tree-sitter details
-- `analysis` should know about language meaning, but not transport concerns
-- `syntax` should know about parsing, but not semantic meaning or LSP types
-
-Keeping these boundaries sharp makes the code easier to test and easier to
-change as the server grows.
-
-## Current State
-
-Today, the active crate has the following implemented pieces:
-
-- `syntax`
-  Parses Achitek source into a `SyntaxTree` and collects recoverable syntax
-  issues from Tree-sitter error and missing nodes.
-- `analysis`
-  Calls into `syntax`, translates syntax issues into analysis diagnostics, and
-  provides semantic diagnostics and editor feature data.
-- `server`
-  Maintains open documents, publishes diagnostics, handles supported LSP
-  requests, and scans nearby `.tera` templates for prompt references.
-- `main`
-  Initializes stderr logging with `ACHITEK_LOG` and starts the selected
-  communication channel.
-
-## Request Flow
+The request flow inside the server looks like this:
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant Editor as "Editor / LSP Client"
     participant Server as "server"
-    participant Docs as "In-memory Document Store / State"
+    participant Docs as "In-memory Document Store"
     participant Analysis as "analysis"
     participant Syntax as "syntax"
     participant TS as "tree-sitter-achitekfile"
@@ -93,62 +99,81 @@ sequenceDiagram
     end
 ```
 
-## Document Store
+## 3. Core Components
 
-The server maintains an in-memory view of open documents so analysis runs
-against the latest editor contents rather than only what is on disk.
+### 3.1. Editor Client
 
-This state includes:
+Name: Editor or LSP client
 
-- document URI
-- document version
-- current text
+The user interface that launches `achitek-ls`, sends LSP requests
+and notifications, and renders diagnostics, completions, hover text, symbols,
+navigation, formatting edits, folding ranges, selection ranges, references, and
+rename edits.
 
-Analysis is currently recomputed per request. Cached syntax or analysis results
-can be added later if profiling shows it is necessary.
+> [!Warning]
+> At the moment the only client that has been tested is `neovim v0.12.0`.
 
-## Template Awareness
+### 3.2. Language Server Binary
 
-Achitekfiles can be paired with `.tera` templates that reference prompt names.
-The server scans nearby templates to support:
+Name: `achitek-ls`
 
-- diagnostics for unknown template prompt references
-- go-to-definition from template references back to Achitekfile prompt
-  declarations
-- find-references results that include template usages
-- rename edits that update template usages
+The executable language server. It parses command-line arguments,
+initializes stderr logging, selects the communication channel, performs the LSP
+initialize handshake, and runs the server loop.
 
-Template scanning lives in `src/server/utils.rs` because it supports multiple
-handlers rather than handling a single LSP method directly.
+### 3.3. Server Runtime
 
-## Logging
+Name: `src/server`
 
-Logs are emitted with `tracing` and written to stderr. Stdout is reserved for
-LSP transport data.
+Owns LSP protocol handling, the open-document store, request and
+notification dispatch, diagnostics publishing, and cross-file template support.
+Handlers are split by LSP method under `src/server/handlers`.
 
-`ACHITEK_LOG` controls filtering:
+### 3.4. Analysis Layer
 
-- unset or `info`
-  Lifecycle events such as startup, initialization, channel selection, shutdown,
-  and IO-thread joining.
-- `debug`
-  Request and notification flow, document lifecycle, diagnostic counts, and
-  template scans.
-- target filters such as `achitek_ls=debug,lsp_server=warn`
-  Fine-grained control using `tracing_subscriber::filter::Targets` syntax.
+Name: `src/analysis.rs`
 
-## Design Principles
+Owns editor-facing language meaning. It consumes parsed syntax and
+produces semantic diagnostics, document symbols, hover text, completions,
+definition targets, references, rename targets, and related ranges.
 
-- Keep protocol code in `server`
-- Keep parsing code in `syntax`
-- Keep language meaning in `analysis`
-- Prefer crate-local types over leaking Tree-sitter or LSP details across layers
-- Grow from document-local features first, then add cross-file semantics
+### 3.5. Syntax Layer
 
-## Near-Term Milestones
+Name: `src/syntax.rs`
 
-1. Add tests around the full server initialize/open/request/shutdown loop
-2. Decide whether additional communication channels beyond stdio should be
-   implemented
-3. Add higher-level code actions after diagnostics stabilize
-4. Consider cached analysis if repeated parsing becomes measurable
+Owns parsing and source mapping. It configures Tree-sitter with
+the Achitekfile grammar, wraps parsed trees, computes text ranges, extracts
+source text, and reports recoverable syntax errors.
+
+## 4. Development & Testing Environment
+
+Local Setup Instructions: See [Contributing](../CONTRIBUTING.md).
+
+Testing Frameworks: Rust unit tests through Cargo. The preferred project test
+command is `just test`, which runs `cargo nextest`.
+
+Code Quality Tools: `rustfmt`, Clippy, `lefthook`, `just`, Nix.
+
+Useful commands:
+
+```sh
+nix develop
+just test
+just clippy
+just fmt-check
+just pre-commit
+```
+
+## 5. Future Considerations / Roadmap
+
+- Add tests around the full server initialize/open/request/shutdown loop.
+- Decide whether communication channels beyond stdio should be implemented.
+- Add code actions for common diagnostic fixes.
+- Add semantic tokens if grammar highlighting is not expressive enough.
+- Add inlay hints where they clarify expected value shapes.
+- Consider cached analysis if repeated parsing becomes measurable.
+- Consider broader workspace indexing once document-local features remain
+  stable.
+
+See [CAPABILITIES.md](CAPABILITIES.md) for the current capability matrix and
+candidate future editor features.
