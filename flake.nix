@@ -1,5 +1,5 @@
 {
-  description = "Achitek Development Environment";
+  description = "Achitek-ls Development Environment";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 

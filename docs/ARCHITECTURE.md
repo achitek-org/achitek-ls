@@ -1,25 +1,37 @@
 # Architecture
 
-This document describes the current workspace layout, crate responsibilities,
-and request flow for the Achitekfile language server.
+This document describes the current crate layout, module responsibilities, and
+request flow for the Achitekfile language server.
 
-## Workspace Structure
+## Crate Structure
 
-This repository is a Rust workspace with three members:
+The current package exposes one library crate and one binary:
 
-- `server`
+- `src/main.rs`
+  Parses command-line arguments, initializes logging, constructs the server, and
+  runs it.
+- `src/server`
   Owns LSP protocol handling, editor communication, document lifecycle, and
-  in-memory server state.
-- `analysis`
+  in-memory server state. Request and notification handling is split into
+  focused modules under `src/server/handlers`.
+- `src/analysis.rs`
   Owns editor-facing language analysis. It consumes parsed syntax trees and
-  produces diagnostics and, later, features such as hover, symbols,
-  definitions, references, and rename support.
-- `syntax`
+  produces diagnostics, symbols, hover text, completions, definitions,
+  references, and rename information.
+- `src/syntax.rs`
   Owns parsing Achitek source with Tree-sitter, source ranges, syntax-tree
   wrappers, and syntax-level errors.
+- `src/capabilities.rs`
+  Defines the LSP capabilities advertised during initialization.
+- `src/arguments.rs`
+  Parses command-line options, including the communication channel.
 
-The Achitek Tree-sitter grammar itself lives outside this workspace and is used
-by `syntax` through the `tree-sitter-achitekfile` dependency.
+The old `server`, `analysis`, and `syntax` workspace directories remain as
+legacy reference material during the refactor. The active implementation lives
+under `src`.
+
+The Achitek Tree-sitter grammar itself lives outside this repository and is used
+through the `tree-sitter-achitekfile` dependency.
 
 ## Dependency Direction
 
@@ -38,16 +50,20 @@ change as the server grows.
 
 ## Current State
 
-Today, the workspace has the following implemented pieces:
+Today, the active crate has the following implemented pieces:
 
 - `syntax`
-  Parses Achitek source into a `SyntaxTree`
-- `syntax`
-  Collects recoverable syntax issues from Tree-sitter error and missing nodes
+  Parses Achitek source into a `SyntaxTree` and collects recoverable syntax
+  issues from Tree-sitter error and missing nodes.
 - `analysis`
-  Calls into `syntax` and translates syntax issues into analysis diagnostics
+  Calls into `syntax`, translates syntax issues into analysis diagnostics, and
+  provides semantic diagnostics and editor feature data.
 - `server`
-  Exists as a crate, but has not yet been wired into the analysis pipeline
+  Maintains open documents, publishes diagnostics, handles supported LSP
+  requests, and scans nearby `.tera` templates for prompt references.
+- `main`
+  Initializes stderr logging with `ACHITEK_LOG` and starts the selected
+  communication channel.
 
 ## Request Flow
 
@@ -62,38 +78,64 @@ sequenceDiagram
     participant TS as "tree-sitter-achitekfile"
 
     Editor->>Server: "LSP request or notification"
-    Note over Editor,Server: "Examples: didOpen, didChange, hover, completion, definition"
-
-    Server->>Docs: "Load or update document text and server state"
+    Server->>Docs: "Load or update document text"
     Server->>Analysis: "Analyze document or request language feature"
-
-    Analysis->>Syntax: "Parse source or fetch syntax tree"
+    Analysis->>Syntax: "Parse source"
     Syntax->>TS: "Configure parser with Achitek grammar"
     TS-->>Syntax: "Language definition"
-    Syntax->>Syntax: "Build syntax tree and collect syntax issues"
     Syntax-->>Analysis: "Syntax tree and syntax errors"
-
-    Analysis->>Analysis: "Run semantic checks and build feature results"
     Analysis-->>Server: "Diagnostics or feature response data"
 
     alt "Request expects a response"
         Server-->>Editor: "LSP response"
     else "Notification updates editor state"
-        Server-->>Editor: "publishDiagnostics or other notification"
+        Server-->>Editor: "publishDiagnostics"
     end
 ```
 
-## Document Store / State
+## Document Store
 
-The server will maintain an in-memory view of open documents so analysis runs
+The server maintains an in-memory view of open documents so analysis runs
 against the latest editor contents rather than only what is on disk.
 
-This state will typically include:
+This state includes:
 
 - document URI
 - document version
 - current text
-- later, cached analysis or syntax results
+
+Analysis is currently recomputed per request. Cached syntax or analysis results
+can be added later if profiling shows it is necessary.
+
+## Template Awareness
+
+Achitekfiles can be paired with `.tera` templates that reference prompt names.
+The server scans nearby templates to support:
+
+- diagnostics for unknown template prompt references
+- go-to-definition from template references back to Achitekfile prompt
+  declarations
+- find-references results that include template usages
+- rename edits that update template usages
+
+Template scanning lives in `src/server/utils.rs` because it supports multiple
+handlers rather than handling a single LSP method directly.
+
+## Logging
+
+Logs are emitted with `tracing` and written to stderr. Stdout is reserved for
+LSP transport data.
+
+`ACHITEK_LOG` controls filtering:
+
+- unset or `info`
+  Lifecycle events such as startup, initialization, channel selection, shutdown,
+  and IO-thread joining.
+- `debug`
+  Request and notification flow, document lifecycle, diagnostic counts, and
+  template scans.
+- target filters such as `achitek_ls=debug,lsp_server=warn`
+  Fine-grained control using `tracing_subscriber::filter::Targets` syntax.
 
 ## Design Principles
 
@@ -105,7 +147,8 @@ This state will typically include:
 
 ## Near-Term Milestones
 
-1. Wire `server` to store open documents and call `analysis::analyze()`
-2. Publish diagnostics on open and change
-3. Expand `analysis` from syntax diagnostics into semantic validation
-4. Add symbol, hover, and definition support on top of the same layering
+1. Add tests around the full server initialize/open/request/shutdown loop
+2. Decide whether additional communication channels beyond stdio should be
+   implemented
+3. Add higher-level code actions after diagnostics stabilize
+4. Consider cached analysis if repeated parsing becomes measurable

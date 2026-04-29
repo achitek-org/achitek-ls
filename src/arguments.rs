@@ -2,7 +2,7 @@ use lexopt::{
     Arg::{Long, Short},
     Parser,
 };
-use std::path::PathBuf;
+use std::{fmt::Display, path::PathBuf};
 
 /// Communication channel used by the language server.
 pub enum CommunicationsChannel {
@@ -14,6 +14,17 @@ pub enum CommunicationsChannel {
     Socket { port: u16 },
     /// Use Node.js IPC when the server is launched from a Node process.
     NodeIpc,
+}
+
+impl Display for CommunicationsChannel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Stdio => f.write_str("stdio"),
+            Self::Pipe { path } => write!(f, "pipe:{}", path.display()),
+            Self::Socket { port } => write!(f, "socket:{port}"),
+            Self::NodeIpc => f.write_str("node-ipc"),
+        }
+    }
 }
 
 /// Command line arguments
