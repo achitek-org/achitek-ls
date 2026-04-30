@@ -11,6 +11,10 @@ use lsp_types::{
 };
 
 pub fn publish(connection: &Connection, uri: &Uri, documents: &Documents) -> anyhow::Result<()> {
+    if utils::is_template_uri(uri) {
+        return publish_template(connection, uri, documents);
+    }
+
     let Some(document) = documents.get(uri.as_str()) else {
         return Ok(());
     };
@@ -35,6 +39,28 @@ pub fn publish(connection: &Connection, uri: &Uri, documents: &Documents) -> any
             uri: uri.clone(),
             diagnostics,
             version: Some(document.version),
+        },
+    )
+}
+
+pub fn publish_template(
+    connection: &Connection,
+    uri: &Uri,
+    documents: &Documents,
+) -> anyhow::Result<()> {
+    let diagnostics = utils::template_diagnostics(uri, documents)?;
+    tracing::debug!(
+        ?uri,
+        count = diagnostics.len(),
+        "publishing current template diagnostics"
+    );
+
+    send_publish_diagnostics(
+        connection,
+        PublishDiagnosticsParams {
+            uri: uri.clone(),
+            diagnostics,
+            version: documents.get(uri.as_str()).map(|document| document.version),
         },
     )
 }

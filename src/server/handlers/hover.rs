@@ -8,7 +8,11 @@
 
 #[cfg(test)]
 use crate::server::Document;
-use crate::{analysis, server::Documents, syntax};
+use crate::{
+    analysis,
+    server::{Documents, utils},
+    syntax,
+};
 use anyhow::Context;
 use lsp_server::{Connection, Message, Request, Response};
 #[cfg(test)]
@@ -25,20 +29,26 @@ pub fn handle(
         serde_json::from_value(request.params.clone()).context("failed to parse hover params")?;
     let text_document_position = params.text_document_position_params;
 
-    let result =
-        if let Some(document) = documents.get(text_document_position.text_document.uri.as_str()) {
-            let analysis = analysis::analyze(&document.text).with_context(|| {
-                format!(
-                    "failed to analyze document `{:?}`",
-                    text_document_position.text_document.uri
-                )
-            })?;
-            analysis
-                .hover(to_text_position(text_document_position.position))
-                .map(to_lsp_hover)
-        } else {
-            None
-        };
+    let result = if utils::is_template_uri(&text_document_position.text_document.uri) {
+        utils::hover(
+            &text_document_position.text_document.uri,
+            text_document_position.position,
+            documents,
+        )?
+    } else if let Some(document) = documents.get(text_document_position.text_document.uri.as_str())
+    {
+        let analysis = analysis::analyze(&document.text).with_context(|| {
+            format!(
+                "failed to analyze document `{:?}`",
+                text_document_position.text_document.uri
+            )
+        })?;
+        analysis
+            .hover(to_text_position(text_document_position.position))
+            .map(to_lsp_hover)
+    } else {
+        None
+    };
 
     let response = Response::new_ok(request.id.clone(), result);
     connection
@@ -93,6 +103,7 @@ mod test {
         TextDocumentIdentifier, TextDocumentPositionParams,
         request::{HoverRequest, Request as LspRequest},
     };
+    use std::fs;
 
     #[test]
     fn handle_hover_request() -> anyhow::Result<()> {
@@ -164,6 +175,129 @@ mod test {
             serde_json::from_value(response.result.expect("response should contain a result"))?;
         assert!(hover.is_none());
 
+        Ok(())
+    }
+
+    #[test]
+    fn handle_template_hover_request_for_known_prompt() -> anyhow::Result<()> {
+        let temp_root = utils::temp_dir("achitek-template-hover-known")?;
+        fs::create_dir_all(&temp_root)?;
+        let achitek_path = temp_root.join("Achitekfile");
+        fs::write(&achitek_path, valid_source())?;
+        let template_path = temp_root.join("Cargo.toml.tera");
+        fs::write(&template_path, "name = \"{{project_name}}\"")?;
+        let achitek_uri = utils::path_to_uri(&achitek_path)?;
+        let template_uri = utils::path_to_uri(&template_path)?;
+        let (server_connection, client_connection) = Connection::memory();
+        let request_id = RequestId::from(1_i32);
+        let request = Request::new(
+            request_id,
+            HoverRequest::METHOD.to_owned(),
+            HoverParams {
+                text_document_position_params: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier {
+                        uri: template_uri.clone(),
+                    },
+                    position: Position {
+                        line: 0,
+                        character: 12,
+                    },
+                },
+                work_done_progress_params: Default::default(),
+            },
+        );
+        let documents = Documents::from([
+            (
+                achitek_uri.as_str().to_owned(),
+                Document {
+                    version: 1,
+                    text: valid_source(),
+                },
+            ),
+            (
+                template_uri.as_str().to_owned(),
+                Document {
+                    version: 1,
+                    text: "name = \"{{project_name}}\"".to_owned(),
+                },
+            ),
+        ]);
+
+        handle(&server_connection, &request, &documents)?;
+
+        let response = recv_response(&client_connection)?;
+        let hover: Option<Hover> =
+            serde_json::from_value(response.result.expect("response should contain a result"))?;
+        let hover = hover.expect("hover should be available");
+        let HoverContents::Markup(contents) = hover.contents else {
+            panic!("expected markup hover contents");
+        };
+        assert!(contents.value.contains("Achitek prompt reference"));
+        assert!(contents.value.contains("project_name"));
+        assert!(contents.value.contains("Kind: `prompt`"));
+
+        fs::remove_dir_all(&temp_root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn handle_template_hover_request_for_unknown_prompt() -> anyhow::Result<()> {
+        let temp_root = utils::temp_dir("achitek-template-hover-unknown")?;
+        fs::create_dir_all(&temp_root)?;
+        let achitek_path = temp_root.join("Achitekfile");
+        fs::write(&achitek_path, valid_source())?;
+        let template_path = temp_root.join("Cargo.toml.tera");
+        fs::write(&template_path, "name = \"{{missing_prompt}}\"")?;
+        let achitek_uri = utils::path_to_uri(&achitek_path)?;
+        let template_uri = utils::path_to_uri(&template_path)?;
+        let (server_connection, client_connection) = Connection::memory();
+        let request_id = RequestId::from(1_i32);
+        let request = Request::new(
+            request_id,
+            HoverRequest::METHOD.to_owned(),
+            HoverParams {
+                text_document_position_params: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier {
+                        uri: template_uri.clone(),
+                    },
+                    position: Position {
+                        line: 0,
+                        character: 12,
+                    },
+                },
+                work_done_progress_params: Default::default(),
+            },
+        );
+        let documents = Documents::from([
+            (
+                achitek_uri.as_str().to_owned(),
+                Document {
+                    version: 1,
+                    text: valid_source(),
+                },
+            ),
+            (
+                template_uri.as_str().to_owned(),
+                Document {
+                    version: 1,
+                    text: "name = \"{{missing_prompt}}\"".to_owned(),
+                },
+            ),
+        ]);
+
+        handle(&server_connection, &request, &documents)?;
+
+        let response = recv_response(&client_connection)?;
+        let hover: Option<Hover> =
+            serde_json::from_value(response.result.expect("response should contain a result"))?;
+        let hover = hover.expect("hover should be available");
+        let HoverContents::Markup(contents) = hover.contents else {
+            panic!("expected markup hover contents");
+        };
+        assert!(contents.value.contains("Unknown Achitek prompt reference"));
+        assert!(contents.value.contains("missing_prompt"));
+
+        fs::remove_dir_all(&temp_root)?;
         Ok(())
     }
 

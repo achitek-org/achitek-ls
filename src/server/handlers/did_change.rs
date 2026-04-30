@@ -10,7 +10,7 @@
 use super::diagnostics;
 #[cfg(test)]
 use crate::server::Document;
-use crate::server::Documents;
+use crate::server::{Documents, utils};
 use anyhow::Context;
 use lsp_server::{Connection, Notification};
 #[cfg(test)]
@@ -33,6 +33,11 @@ pub fn handle(
         document.version = version;
         document.text = apply_content_changes(&document.text, &params.content_changes);
         tracing::debug!(?uri, version, change_count, "changed document");
+        if utils::is_template_uri(&uri) {
+            diagnostics::publish_template(connection, &uri, documents)?;
+            return Ok(());
+        }
+
         diagnostics::publish(connection, &uri, documents)?;
         diagnostics::publish_templates(connection, &uri, documents)?;
     } else {
@@ -159,6 +164,63 @@ mod test {
         let template_diagnostics = recv_publish_diagnostics(&client_connection)?;
         assert_eq!(template_diagnostics.uri, template_uri);
         assert_eq!(template_diagnostics.diagnostics.len(), 1);
+
+        fs::remove_dir_all(&temp_root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn handle_did_change_template_publishes_current_template_diagnostics() -> anyhow::Result<()> {
+        let temp_root = utils::temp_dir("achitek-did-change-current-template-diagnostics")?;
+        fs::create_dir_all(&temp_root)?;
+        let achitek_path = temp_root.join("Achitekfile");
+        fs::write(&achitek_path, source())?;
+        let template_path = temp_root.join("Cargo.toml.tera");
+        fs::write(&template_path, "name = \"{{project_name}}\"")?;
+        let achitek_uri = utils::path_to_uri(&achitek_path)?;
+        let template_uri = utils::path_to_uri(&template_path)?;
+        let (server_connection, client_connection) = Connection::memory();
+        let mut documents = Documents::from([
+            (
+                achitek_uri.as_str().to_owned(),
+                Document {
+                    version: 1,
+                    text: source(),
+                },
+            ),
+            (
+                template_uri.as_str().to_owned(),
+                Document {
+                    version: 1,
+                    text: String::new(),
+                },
+            ),
+        ]);
+        let notification = Notification::new(
+            DidChangeTextDocument::METHOD.to_owned(),
+            DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: template_uri.clone(),
+                    version: 2,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: "name = \"{{missing_prompt}}\"".to_owned(),
+                }],
+            },
+        );
+
+        handle(&server_connection, &notification, &mut documents)?;
+
+        let diagnostics = recv_publish_diagnostics(&client_connection)?;
+        assert_eq!(diagnostics.uri, template_uri);
+        assert_eq!(diagnostics.version, Some(2));
+        assert_eq!(diagnostics.diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics.diagnostics[0].message,
+            "unknown Achitek prompt reference `missing_prompt`; define prompt `missing_prompt` in Achitekfile or rename this template reference"
+        );
 
         fs::remove_dir_all(&temp_root)?;
         Ok(())

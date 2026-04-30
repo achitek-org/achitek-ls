@@ -8,7 +8,7 @@
 //! for nearby `.tera` templates that reference its prompts.
 
 use super::diagnostics;
-use crate::server::{Document, Documents};
+use crate::server::{Document, Documents, utils};
 use anyhow::Context;
 use lsp_server::{Connection, Notification};
 use lsp_types::DidOpenTextDocumentParams;
@@ -35,6 +35,10 @@ pub fn handle(
         },
     );
     tracing::debug!(?uri, version, "opened document");
+    if utils::is_template_uri(&uri) {
+        return diagnostics::publish_template(connection, &uri, documents);
+    }
+
     diagnostics::publish(connection, &uri, documents)?;
     diagnostics::publish_templates(connection, &uri, documents)
 }
@@ -124,7 +128,52 @@ mod test {
         assert_eq!(template_diagnostics.diagnostics.len(), 1);
         assert_eq!(
             template_diagnostics.diagnostics[0].message,
-            "unknown prompt reference `missing_prompt`"
+            "unknown Achitek prompt reference `missing_prompt`; define prompt `missing_prompt` in Achitekfile or rename this template reference"
+        );
+
+        fs::remove_dir_all(&temp_root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn handle_did_open_template_publishes_current_template_diagnostics() -> anyhow::Result<()> {
+        let temp_root = utils::temp_dir("achitek-did-open-current-template-diagnostics")?;
+        fs::create_dir_all(&temp_root)?;
+        let achitek_path = temp_root.join("Achitekfile");
+        fs::write(&achitek_path, source())?;
+        let template_path = temp_root.join("Cargo.toml.tera");
+        fs::write(&template_path, "name = \"{{project_name}}\"")?;
+        let achitek_uri = utils::path_to_uri(&achitek_path)?;
+        let template_uri = utils::path_to_uri(&template_path)?;
+        let (server_connection, client_connection) = Connection::memory();
+        let notification = Notification::new(
+            DidOpenTextDocument::METHOD.to_owned(),
+            DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: template_uri.clone(),
+                    language_id: "tera".to_owned(),
+                    version: 3,
+                    text: "name = \"{{missing_prompt}}\"".to_owned(),
+                },
+            },
+        );
+        let mut documents = Documents::from([(
+            achitek_uri.as_str().to_owned(),
+            Document {
+                version: 1,
+                text: source(),
+            },
+        )]);
+
+        handle(&server_connection, &notification, &mut documents)?;
+
+        let diagnostics = recv_publish_diagnostics(&client_connection)?;
+        assert_eq!(diagnostics.uri, template_uri);
+        assert_eq!(diagnostics.version, Some(3));
+        assert_eq!(diagnostics.diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics.diagnostics[0].message,
+            "unknown Achitek prompt reference `missing_prompt`; define prompt `missing_prompt` in Achitekfile or rename this template reference"
         );
 
         fs::remove_dir_all(&temp_root)?;
