@@ -6,12 +6,12 @@ version = 4
 name = "achitek-ls"
 version = "0.1.1"
 dependencies = [
+ "achitekfile",
  "anyhow",
  "indoc",
  "lexopt",
  "lsp-server",
  "lsp-types",
- "ropey",
  "rustc-hash",
  "serde",
  "serde_json",
@@ -19,6 +19,17 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-subscriber",
+ "tree-sitter",
+ "tree-sitter-achitekfile",
+]
+
+[[package]]
+name = "achitekfile"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "704393805c8893b883a2ef18c98e447fcc3c56391452358025a23697de6117a7"
+dependencies = [
+ "regex",
  "tree-sitter",
  "tree-sitter-achitekfile",
 ]
@@ -237,15 +248,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
-name = "ropey"
-version = "2.0.0-beta.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4045a00dc327d084a2bbf126976e14125b54f23bd30511d45b842eba76c52d74"
-dependencies = [
- "str_indices",
-]
-
-[[package]]
 name = "rustc-hash"
 version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -332,12 +334,6 @@ name = "smallvec"
 version = "2.0.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef784004ca8777809dcdad6ac37629f0a97caee4c685fcea805278d81dd8b857"
-
-[[package]]
-name = "str_indices"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d08889ec5408683408db66ad89e0e1f93dff55c73a4ccc71c427d5b277ee47e6"
 
 [[package]]
 name = "streaming-iterator"

@@ -18,16 +18,16 @@ path = "src/main.rs"
 path = "src/lib.rs"
 
 [dependencies]
-lexopt = "0.3.2"
+achitekfile = "0.2.0"
 anyhow = "1.0.102"
-thiserror = "2.0.18"
+lexopt = "0.3.2"
 lsp-server = "0.7.9"
 lsp-types = "0.97.0"
-ropey = "2.0.0-beta.1"
 rustc-hash = "2.1.2"
 serde = "1.0.228"
 serde_json = "1.0.149"
 smallvec = "2.0.0-alpha.12"
+thiserror = "2.0.18"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = [
     "registry",

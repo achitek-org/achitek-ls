@@ -114,7 +114,6 @@
             cargo-nextest
             cargo-watch
             just
-            natscli
             nix-lsp-server
             openssl
             pkg-config # needed by openssl to locate headers and libraries

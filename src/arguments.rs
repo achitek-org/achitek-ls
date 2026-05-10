@@ -40,6 +40,8 @@ pub struct Args {
     pub version: String,
     /// Communication channel selected for the language server.
     pub channel: Option<CommunicationsChannel>,
+    /// Optional log file path. Overridden by `ACHITEK_LOG_FILE` when set.
+    pub log_file: Option<PathBuf>,
 }
 
 #[doc(hidden)]
@@ -47,9 +49,10 @@ const HELP_TEXT: &str = r#"
 Usage: achitek-ls [ARGS]
 
 ARGS:
-  -v, --version  Print version
-      --stdio    Uses stdio as the communication channel
-  -h, --help     Print help
+  -v, --version          Print version
+      --stdio            Uses stdio as the communication channel
+      --log-file <PATH>  Write logs to a file instead of stderr
+  -h, --help             Print help
 "#;
 
 /// Parses command-line arguments into language server configuration.
@@ -64,6 +67,7 @@ pub fn parse() -> Result<Args, lexopt::Error> {
 fn parse_parser(mut parser: Parser) -> Result<Args, lexopt::Error> {
     let mut version = "".to_string();
     let mut channel = Some(CommunicationsChannel::default());
+    let mut log_file = None;
 
     while let Some(arg) = parser.next()? {
         match arg {
@@ -77,11 +81,16 @@ fn parse_parser(mut parser: Parser) -> Result<Args, lexopt::Error> {
                 std::process::exit(0);
             }
             Long("stdio") => channel = Some(CommunicationsChannel::Stdio),
+            Long("log-file") => log_file = Some(PathBuf::from(parser.value()?)),
             _ => return Err(arg.unexpected()),
         }
     }
 
-    Ok(Args { version, channel })
+    Ok(Args {
+        version,
+        channel,
+        log_file,
+    })
 }
 
 #[cfg(test)]
@@ -101,5 +110,12 @@ mod tests {
         let args = parse_parser(Parser::from_args(["--stdio"])).unwrap();
 
         assert_eq!(args.channel, Some(CommunicationsChannel::Stdio));
+    }
+
+    #[test]
+    fn accepts_log_file_path() {
+        let args = parse_parser(Parser::from_args(["--log-file", "/tmp/achitek-ls.log"])).unwrap();
+
+        assert_eq!(args.log_file, Some("/tmp/achitek-ls.log".into()));
     }
 }
