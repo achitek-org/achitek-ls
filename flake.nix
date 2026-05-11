@@ -31,8 +31,20 @@
 
         nix-lsp-server = nil.packages.${system}.nil;
 
+        # Crane's default Cargo source filter keeps Rust/TOML files, but drops
+        # vendored grammar assets like parser.c, scanner.c, headers, and
+        # queries. Keep the normal filter and explicitly retain the temporary
+        # tree-sitter-tera vendor copy until the upstream crate is published.
+        src = pkgs.lib.cleanSourceWith {
+          src = pkgs.lib.cleanSource ./.;
+          filter =
+            path: type:
+            (craneLib.filterCargoSources path type)
+            || pkgs.lib.hasPrefix "${toString ./.}/vendor/tree-sitter-tera/" (toString path);
+        };
+
         commonArgs = {
-          src = craneLib.cleanCargoSource ./.;
+          inherit src;
 
           pname = "achitek-ls";
           inherit (achitekLsCrate) version;
