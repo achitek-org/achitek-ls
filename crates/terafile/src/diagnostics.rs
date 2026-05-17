@@ -95,7 +95,6 @@ pub struct Diagnostic {
 
 impl Diagnostic {
     /// Creates a diagnostic from a code and source range.
-    #[allow(dead_code)]
     pub(crate) fn new(code: DiagnosticCode, range: TextRange) -> Self {
         Self {
             code,

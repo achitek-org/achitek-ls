@@ -5,6 +5,7 @@
 //! to be returned as structured diagnostics on [`Analysis`] as the diagnostics
 //! pass grows.
 
+mod diagnostics;
 mod lowering;
 mod syntax;
 
@@ -127,10 +128,11 @@ enum AnalysisErrorKind {
 pub fn analyze(source: &str) -> Result<Analysis<'_>, AnalysisError> {
     let tree = parser::parse(source)?;
     let file = TeraFile::from_tree(&tree, source);
+    let diagnostics = diagnostics::collect_diagnostics(&tree, source);
 
     Ok(Analysis {
         source,
         file,
-        diagnostics: Vec::new(),
+        diagnostics,
     })
 }

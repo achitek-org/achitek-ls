@@ -84,7 +84,26 @@ mod diagnostics {
 #[cfg(test)]
 mod analysis {
     use indoc::indoc;
-    use terafile::{BindingKind, TemplateDependencyKind, TemplatePath};
+    use terafile::{BindingKind, DiagnosticCode, TemplateDependencyKind, TemplatePath};
+
+    fn diagnostic_codes(source: &str) -> Vec<&'static str> {
+        terafile::analyze(source)
+            .expect("expected analysis to run")
+            .diagnostics()
+            .iter()
+            .map(|diagnostic| diagnostic.code().as_str())
+            .collect()
+    }
+
+    fn assert_reports(source: &str, expected: DiagnosticCode) {
+        let actual = diagnostic_codes(source);
+        assert!(
+            actual.contains(&expected.as_str()),
+            "expected diagnostic code {} in {:?}",
+            expected.as_str(),
+            actual
+        );
+    }
 
     #[test]
     fn recovers_template_dependencies_and_macro_shapes() {
@@ -100,6 +119,7 @@ mod analysis {
 
         let analysis = terafile::analyze(source).expect("expected analysis to run");
         let file = analysis.file();
+        assert!(!analysis.has_errors());
 
         assert_eq!(file.dependencies().len(), 3);
         assert!(matches!(
@@ -148,6 +168,7 @@ mod analysis {
 
         let analysis = terafile::analyze(source).expect("expected analysis to run");
         let file = analysis.file();
+        assert!(!analysis.has_errors());
 
         let bindings = file
             .bindings()
@@ -193,5 +214,89 @@ mod analysis {
             .collect::<Vec<_>>();
         assert!(references.contains(&"prompts"));
         assert!(references.contains(&"prompt.name"));
+    }
+
+    #[test]
+    fn reports_syntax_error_for_recovered_error_node() {
+        assert_reports("{% if enabled %}{{ name }}", DiagnosticCode::SyntaxError);
+    }
+
+    #[test]
+    fn reports_unterminated_tag() {
+        assert_reports("{{ name", DiagnosticCode::UnterminatedTag);
+    }
+
+    #[test]
+    fn reports_unexpected_end_tag() {
+        assert_reports("{% endif %}", DiagnosticCode::UnexpectedEndTag);
+    }
+
+    #[test]
+    fn reports_extends_not_first() {
+        assert_reports(
+            indoc! {r#"
+                <header></header>
+                {% extends "base.html" %}
+            "#},
+            DiagnosticCode::ExtendsNotFirst,
+        );
+    }
+
+    #[test]
+    fn reports_content_outside_block_in_child_template() {
+        assert_reports(
+            indoc! {r#"
+                {% extends "base.html" %}
+
+                ignored content
+
+                {% block content %}Hello{% endblock %}
+            "#},
+            DiagnosticCode::ContentOutsideBlockInChildTemplate,
+        );
+    }
+
+    #[test]
+    fn reports_macro_not_top_level() {
+        assert_reports(
+            indoc! {r#"
+                {% if enabled %}
+                  {% macro label(text) %}{{ text }}{% endmacro %}
+                {% endif %}
+            "#},
+            DiagnosticCode::MacroNotTopLevel,
+        );
+    }
+
+    #[test]
+    fn reports_block_not_allowed_in_macro() {
+        assert_reports(
+            indoc! {r#"
+                {% macro label(text) %}
+                  {% block content %}{{ text }}{% endblock %}
+                {% endmacro %}
+            "#},
+            DiagnosticCode::BlockNotAllowedInMacro,
+        );
+    }
+
+    #[test]
+    fn reports_extends_not_allowed_in_macro() {
+        assert_reports(
+            indoc! {r#"
+                {% macro label(text) %}
+                  {% extends "base.html" %}
+                {% endmacro %}
+            "#},
+            DiagnosticCode::ExtendsNotAllowedInMacro,
+        );
+    }
+
+    #[test]
+    fn reports_dynamic_include_path() {
+        assert_reports(
+            "{% include template_name %}",
+            DiagnosticCode::DynamicIncludePath,
+        );
     }
 }
