@@ -19,7 +19,7 @@ changelog_path = "crates/achitekfile/CHANGELOG.md"
 
 [[package]]
 name = "terafile"
-release = false
+changelog_path = "crates/terafile/CHANGELOG.md"
 
 [changelog]
 header = """# Changelog

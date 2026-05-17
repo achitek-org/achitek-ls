@@ -33,15 +33,15 @@
 
         # Crane's default Cargo source filter keeps Rust/TOML files, but drops
         # vendored grammar assets like parser.c, scanner.c, headers, and
-        # queries. Keep the normal filter and explicitly retain the temporary
-        # tree-sitter-tera vendor copies until the upstream crate is published.
+        # queries. Keep the normal filter and explicitly retain terafile's
+        # temporary tree-sitter-tera vendor copy until upstream publishes a
+        # crates.io binding.
         src = pkgs.lib.cleanSourceWith {
           src = pkgs.lib.cleanSource ./.;
           filter =
             path: type:
             (craneLib.filterCargoSources path type)
-            || pkgs.lib.hasPrefix "${toString ./.}/vendor/tree-sitter-tera/" (toString path)
-            || pkgs.lib.hasPrefix "${toString ./.}/crates/achitek-ls/vendor/tree-sitter-tera/" (toString path);
+            || pkgs.lib.hasPrefix "${toString ./.}/crates/terafile/vendor/tree-sitter-tera/" (toString path);
         };
 
         commonArgs = {

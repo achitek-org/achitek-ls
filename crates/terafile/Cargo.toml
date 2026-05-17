@@ -6,10 +6,9 @@ rust-version.workspace = true
 description = "tera file parser"
 readme = "README.md"
 repository.workspace = true
-license = "MIT"
-# keywords = ["achitekfile", "lsp", "language-server"]
-# categories = ["command-line-utilities"]
-
+license = "MIT OR Apache-2.0"
+keywords = ["tera", "parser", "tree-sitter", "templates", "diagnostics"]
+categories = ["parser-implementations", "development-tools"]
 
 [dependencies]
 achitek-source = { version = "0.1.0", path = "../achitek-source" }

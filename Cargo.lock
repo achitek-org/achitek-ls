@@ -8,7 +8,6 @@ version = "0.1.1"
 dependencies = [
  "achitekfile 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "anyhow",
- "cc",
  "indoc",
  "lexopt",
  "lsp-server",
@@ -22,7 +21,6 @@ dependencies = [
  "tracing-subscriber",
  "tree-sitter",
  "tree-sitter-achitekfile",
- "tree-sitter-language",
 ]
 
 [[package]]

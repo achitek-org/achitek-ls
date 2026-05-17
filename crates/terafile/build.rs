@@ -6,7 +6,7 @@ fn compile_tree_sitter_tera() {
     let manifest_dir = std::path::PathBuf::from(
         std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR should be set"),
     );
-    let src_dir = manifest_dir.join("../../vendor/tree-sitter-tera/src");
+    let src_dir = manifest_dir.join("vendor/tree-sitter-tera/src");
 
     let mut c_config = cc::Build::new();
     c_config.std("c11").include(&src_dir);
