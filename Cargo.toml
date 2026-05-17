@@ -1,55 +1,25 @@
-[package]
-name = "achitek-ls"
-version = "0.1.1"
-edition = '2024'
-rust-version = "1.90.0"
-description = "achitekfile language server"
-readme = "README.md"
-repository = "https://github.com/achitek-org/achitek-ls"
-license = "MIT"
-keywords = ["achitekfile", "lsp", "language-server"]
-categories = ["command-line-utilities"]
-
 [workspace]
-members = [".", "./crates/terafile"]
+members = ["crates/*"]
 resolver = "3"
 
-[[bin]]
-name = "achitek-ls"
-path = "src/main.rs"
+[workspace.package]
+repository = "https://github.com/achitek-org/achitek-ls"
+edition = "2024"
+rust-version = "1.90.0"
 
-[lib]
-path = "src/lib.rs"
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+unused_lifetimes = "warn"
 
-[dependencies]
-achitekfile = "0.2.0"
-anyhow = "1.0.102"
-lexopt = "0.3.2"
-lsp-server = "0.7.9"
-lsp-types = "0.97.0"
-rustc-hash = "2.1.2"
-serde = "1.0.228"
-serde_json = "1.0.149"
-smallvec = "2.0.0-alpha.12"
-thiserror = "2.0.18"
-tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", default-features = false, features = [
-    "registry",
-    "fmt",
-    "std",
-    "tracing-log",
-] }
-tree-sitter = "0.26.8"
-tree-sitter-achitekfile = "0.1.0"
-tree-sitter-language = "0.1.7"
-
-[dev-dependencies]
-indoc = "2.0.7"
-
-[build-dependencies]
-cc = "1.2.61"
+[workspace.lints.clippy]
+dbg_macro = "warn"
 
 # The profile that 'dist' will build with
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[patch.crates-io]
+# Published workspace crates are consumed from crates.io by default. Uncomment
+# while prototyping achitek-ls changes against unpublished achitekfile APIs.
+# achitekfile = { path = "crates/achitekfile" }

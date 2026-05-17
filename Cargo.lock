@@ -6,7 +6,7 @@ version = 4
 name = "achitek-ls"
 version = "0.1.1"
 dependencies = [
- "achitekfile",
+ "achitekfile 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "anyhow",
  "cc",
  "indoc",
@@ -23,6 +23,17 @@ dependencies = [
  "tree-sitter",
  "tree-sitter-achitekfile",
  "tree-sitter-language",
+]
+
+[[package]]
+name = "achitekfile"
+version = "0.2.0"
+dependencies = [
+ "indoc",
+ "regex",
+ "serde",
+ "tree-sitter",
+ "tree-sitter-achitekfile",
 ]
 
 [[package]]
@@ -359,6 +370,7 @@ name = "terafile"
 version = "0.1.1"
 dependencies = [
  "cc",
+ "indoc",
  "tree-sitter",
  "tree-sitter-language",
 ]

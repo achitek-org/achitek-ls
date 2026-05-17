@@ -19,8 +19,11 @@ fn compile_tree_sitter_tera() {
     c_config.file(&scanner_path);
     println!("cargo:rerun-if-changed={}", scanner_path.display());
 
-    println!("cargo:rerun-if-changed=vendor/tree-sitter-tera/src/tree_sitter/alloc.h");
-    println!("cargo:rerun-if-changed=vendor/tree-sitter-tera/src/tree_sitter/array.h");
-    println!("cargo:rerun-if-changed=vendor/tree-sitter-tera/src/tree_sitter/parser.h");
+    for header in ["alloc.h", "array.h", "parser.h"] {
+        println!(
+            "cargo:rerun-if-changed={}",
+            src_dir.join("tree_sitter").join(header).display()
+        );
+    }
     c_config.compile("tree-sitter-tera");
 }

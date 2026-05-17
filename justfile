@@ -19,8 +19,12 @@ clippy:
     cargo clippy --all-targets --all-features -- -D warnings
 
 # Run tests with nextest
-test:
-    cargo nextest run --all-features
+test-all:
+    cargo nextest run --workspace
+
+# Run tests for specific crate
+test crate:
+  cargo nextest run -p {{crate}}
 
 # Run tests in watch mode
 test-watch:
@@ -43,7 +47,7 @@ clean:
     cargo clean
 
 # Run all pre-commit checks
-pre-commit: fmt-check clippy test check
+pre-commit: fmt-check clippy test-all check
 
 # Run all CI checks
 ci:

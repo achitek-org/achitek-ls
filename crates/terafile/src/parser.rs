@@ -53,23 +53,3 @@ pub fn parse(source: &str) -> Result<Tree, ParseError> {
         kind: ParseErrorKind::ParseCancelled,
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::parse;
-
-    #[test]
-    fn parses_output_reference() {
-        let tree = parse("{{ project_name }}").expect("valid Tera should parse");
-
-        assert!(!tree.root_node().has_error());
-    }
-
-    #[test]
-    fn parses_control_flow() {
-        let tree = parse("{% for item in items %}{{ item.name }}{% endfor %}")
-            .expect("valid Tera should parse");
-
-        assert!(!tree.root_node().has_error());
-    }
-}

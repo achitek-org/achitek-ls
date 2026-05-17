@@ -1,5 +1,5 @@
 [workspace]
-members = ["cargo:."]
+members = ["cargo:crates/achitek-ls"]
 
 # Config for 'dist'
 [dist]

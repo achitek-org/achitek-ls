@@ -26,7 +26,7 @@
         pkgs = nixpkgs.legacyPackages.${system};
         craneLib = crane.mkLib pkgs;
         achitekLsCrate = craneLib.crateNameFromCargoToml {
-          cargoToml = ./Cargo.toml;
+          cargoToml = ./crates/achitek-ls/Cargo.toml;
         };
 
         nix-lsp-server = nil.packages.${system}.nil;
@@ -34,18 +34,20 @@
         # Crane's default Cargo source filter keeps Rust/TOML files, but drops
         # vendored grammar assets like parser.c, scanner.c, headers, and
         # queries. Keep the normal filter and explicitly retain the temporary
-        # tree-sitter-tera vendor copy until the upstream crate is published.
+        # tree-sitter-tera vendor copies until the upstream crate is published.
         src = pkgs.lib.cleanSourceWith {
           src = pkgs.lib.cleanSource ./.;
           filter =
             path: type:
             (craneLib.filterCargoSources path type)
-            || pkgs.lib.hasPrefix "${toString ./.}/vendor/tree-sitter-tera/" (toString path);
+            || pkgs.lib.hasPrefix "${toString ./.}/vendor/tree-sitter-tera/" (toString path)
+            || pkgs.lib.hasPrefix "${toString ./.}/crates/achitek-ls/vendor/tree-sitter-tera/" (toString path);
         };
 
         commonArgs = {
           inherit src;
 
+          cargoToml = ./crates/achitek-ls/Cargo.toml;
           pname = "achitek-ls";
           inherit (achitekLsCrate) version;
           strictDeps = true;
@@ -77,15 +79,13 @@
           }
         );
 
-        achitek-ls-fmt = craneLib.cargoFmt {
-          src = commonArgs.src;
-        };
+        achitek-ls-fmt = craneLib.cargoFmt commonArgs;
 
         achitek-ls = craneLib.buildPackage (
           commonArgs
           // {
             inherit cargoArtifacts;
-            cargoExtraArgs = "--bin achitek-ls";
+            cargoExtraArgs = "--package achitek-ls --bin achitek-ls";
           }
         );
       in

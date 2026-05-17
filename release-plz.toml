@@ -5,6 +5,18 @@ git_tag_enable = true
 publish = true
 release_always = false
 
+[[package]]
+name = "achitek-ls"
+changelog_path = "crates/achitek-ls/CHANGELOG.md"
+
+[[package]]
+name = "achitekfile"
+changelog_path = "crates/achitekfile/CHANGELOG.md"
+
+[[package]]
+name = "terafile"
+release = false
+
 [changelog]
 header = """# Changelog
 
