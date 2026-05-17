@@ -7,4 +7,7 @@ mod diagnostics;
 mod parser;
 mod tree_sitter_tera;
 
+pub use diagnostics::{
+    Diagnostic, DiagnosticCode, DiagnosticKind, Severity, TextPosition, TextRange,
+};
 pub use parser::{ParseError, parse};
