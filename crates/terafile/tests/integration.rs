@@ -80,3 +80,118 @@ mod diagnostics {
         assert_eq!(code.message(), "unknown function");
     }
 }
+
+#[cfg(test)]
+mod analysis {
+    use indoc::indoc;
+    use terafile::{BindingKind, TemplateDependencyKind, TemplatePath};
+
+    #[test]
+    fn recovers_template_dependencies_and_macro_shapes() {
+        let source = indoc! {r#"
+            {% extends "base.html" %}
+            {% import "forms.html" as forms %}
+            {% include ["prompt.html", "fallback.html"] ignore missing %}
+
+            {% macro label(text, class="primary") %}
+              {{ text | upper }}
+            {% endmacro %}
+        "#};
+
+        let analysis = terafile::analyze(source).expect("expected analysis to run");
+        let file = analysis.file();
+
+        assert_eq!(file.dependencies().len(), 3);
+        assert!(matches!(
+            file.dependencies()[0].value.kind,
+            TemplateDependencyKind::Extends
+        ));
+        assert_eq!(
+            file.dependencies()[0].value.path,
+            TemplatePath::Single("base.html".to_owned())
+        );
+        assert_eq!(
+            file.dependencies()[1].value.kind,
+            TemplateDependencyKind::Import {
+                namespace: Some("forms".to_owned())
+            }
+        );
+        assert_eq!(
+            file.dependencies()[2].value.kind,
+            TemplateDependencyKind::Include {
+                ignore_missing: true
+            }
+        );
+        assert_eq!(
+            file.dependencies()[2].value.path,
+            TemplatePath::Choice(vec!["prompt.html".to_owned(), "fallback.html".to_owned()])
+        );
+
+        assert_eq!(file.macros().len(), 1);
+        assert_eq!(file.macros()[0].value.name, "label");
+        assert_eq!(file.macros()[0].value.parameters.len(), 2);
+        assert!(!file.macros()[0].value.parameters[0].value.has_default);
+        assert!(file.macros()[0].value.parameters[1].value.has_default);
+    }
+
+    #[test]
+    fn recovers_bindings_and_callable_references() {
+        let source = indoc! {r#"
+            {% import "forms.html" as forms %}
+            {% set title = "Hello" %}
+            {% for key, prompt in prompts | filter(attribute="visible", value=true) %}
+              {{ forms::field(name=prompt.name) }}
+              {{ url_for(name="home") }}
+              {% if prompt.name is defined %}{{ prompt.name }}{% endif %}
+            {% endfor %}
+        "#};
+
+        let analysis = terafile::analyze(source).expect("expected analysis to run");
+        let file = analysis.file();
+
+        let bindings = file
+            .bindings()
+            .iter()
+            .map(|binding| (binding.value.name.as_str(), binding.value.kind))
+            .collect::<Vec<_>>();
+        assert!(bindings.contains(&("forms", BindingKind::ImportNamespace)));
+        assert!(bindings.contains(&("title", BindingKind::Set)));
+        assert!(bindings.contains(&("key", BindingKind::ForVariable)));
+        assert!(bindings.contains(&("prompt", BindingKind::ForVariable)));
+        assert!(bindings.contains(&("loop", BindingKind::LoopVariable)));
+
+        let filters = file
+            .filters()
+            .iter()
+            .map(|filter| filter.value.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(filters, vec!["filter"]);
+
+        let tests = file
+            .tests()
+            .iter()
+            .map(|test| test.value.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(tests, vec!["defined"]);
+
+        let functions = file
+            .functions()
+            .iter()
+            .map(|function| function.value.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(functions, vec!["url_for"]);
+
+        assert_eq!(file.macro_calls().len(), 1);
+        assert_eq!(file.macro_calls()[0].value.namespace, "forms");
+        assert_eq!(file.macro_calls()[0].value.name, "field");
+        assert_eq!(file.macro_calls()[0].value.arguments[0].value.name, "name");
+
+        let references = file
+            .variable_references()
+            .iter()
+            .map(|reference| reference.value.path.as_str())
+            .collect::<Vec<_>>();
+        assert!(references.contains(&"prompts"));
+        assert!(references.contains(&"prompt.name"));
+    }
+}
