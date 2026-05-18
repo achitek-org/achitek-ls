@@ -13,8 +13,8 @@
 //! by the client.
 
 #[cfg(test)]
-use crate::server::Document;
-use crate::{editor, server::Documents};
+use crate::server::{Document, Documents};
+use crate::{editor, server::ServerState};
 use anyhow::Context;
 #[cfg(test)]
 use lsp_types::Uri;
@@ -27,10 +27,10 @@ use lsp_types::{FoldingRange, FoldingRangeParams};
 /// for multi-line Achitek symbols. If the document is unknown, the handler
 /// returns `null`.
 pub fn handle(
-    documents: &Documents,
+    state: &ServerState,
     params: FoldingRangeParams,
 ) -> anyhow::Result<Option<Vec<FoldingRange>>> {
-    if let Some(document) = documents.get(params.text_document.uri.as_str()) {
+    if let Some(document) = state.documents.get(params.text_document.uri.as_str()) {
         let analysis = editor::build(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
@@ -89,7 +89,11 @@ mod test {
         documents: &Documents,
     ) -> anyhow::Result<()> {
         let params = serde_json::from_value(request.params.clone())?;
-        let result = super::handle(documents, params)?;
+        let state = ServerState {
+            documents: documents.clone(),
+            ..Default::default()
+        };
+        let result = super::handle(&state, params)?;
         connection.sender.send(Message::Response(Response::new_ok(
             request.id.clone(),
             result,

@@ -7,8 +7,8 @@
 //! and returns prompt symbols whose names match the query.
 
 #[cfg(test)]
-use crate::server::Document;
-use crate::{editor, server::Documents, syntax};
+use crate::server::{Document, Documents};
+use crate::{editor, server::ServerState, syntax};
 use anyhow::Context;
 use lsp_types::{
     Location, Position, Range, SymbolInformation, SymbolKind as LspSymbolKind, Uri,
@@ -17,13 +17,13 @@ use lsp_types::{
 
 /// Handles a `workspace/symbol` request.
 pub fn handle(
-    documents: &Documents,
+    state: &ServerState,
     params: WorkspaceSymbolParams,
 ) -> anyhow::Result<Option<WorkspaceSymbolResponse>> {
     let query = params.query.to_lowercase();
     let mut symbols = Vec::new();
 
-    for (uri, document) in documents {
+    for (uri, document) in &state.documents {
         let uri = uri
             .parse::<Uri>()
             .with_context(|| format!("failed to parse document URI `{uri}`"))?;
@@ -88,7 +88,11 @@ mod test {
         documents: &Documents,
     ) -> anyhow::Result<()> {
         let params = serde_json::from_value(request.params.clone())?;
-        let result = super::handle(documents, params)?;
+        let state = ServerState {
+            documents: documents.clone(),
+            ..Default::default()
+        };
+        let result = super::handle(&state, params)?;
         connection.sender.send(Message::Response(Response::new_ok(
             request.id.clone(),
             result,

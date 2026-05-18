@@ -9,10 +9,10 @@
 //! prompt declaration.
 
 #[cfg(test)]
-use crate::server::Document;
+use crate::server::{Document, Documents};
 use crate::{
     editor,
-    server::{Documents, utils},
+    server::{ServerState, utils},
     syntax,
 };
 use anyhow::Context;
@@ -22,12 +22,15 @@ use lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, Location, Position
 
 /// Handles a `textDocument/definition` request.
 pub fn handle(
-    documents: &Documents,
+    state: &ServerState,
     params: GotoDefinitionParams,
 ) -> anyhow::Result<Option<GotoDefinitionResponse>> {
     let text_document_position = params.text_document_position_params;
 
-    if let Some(document) = documents.get(text_document_position.text_document.uri.as_str()) {
+    if let Some(document) = state
+        .documents
+        .get(text_document_position.text_document.uri.as_str())
+    {
         let analysis = editor::build(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
@@ -47,7 +50,7 @@ pub fn handle(
         utils::definition(
             &text_document_position.text_document.uri,
             text_document_position.position,
-            documents,
+            &state.documents,
         )
     }
 }
@@ -90,7 +93,11 @@ mod test {
         documents: &Documents,
     ) -> anyhow::Result<()> {
         let params = serde_json::from_value(request.params.clone())?;
-        let result = super::handle(documents, params)?;
+        let state = ServerState {
+            documents: documents.clone(),
+            ..Default::default()
+        };
+        let result = super::handle(&state, params)?;
         connection.sender.send(Message::Response(Response::new_ok(
             request.id.clone(),
             result,

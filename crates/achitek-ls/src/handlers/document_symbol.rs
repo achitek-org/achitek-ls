@@ -10,8 +10,8 @@
 //! structures such as the top-level `blueprint` block, `prompt` blocks, and
 //! nested `validate` blocks.
 #[cfg(test)]
-use crate::server::Document;
-use crate::{editor, server::Documents, syntax};
+use crate::server::{Document, Documents};
+use crate::{editor, server::ServerState, syntax};
 use anyhow::Context;
 #[cfg(test)]
 use lsp_types::Uri;
@@ -28,10 +28,10 @@ use lsp_types::{
 /// returns `null`, which tells the client there are no symbols available for
 /// that request.
 pub fn handle(
-    in_memory_document: &Documents,
+    state: &ServerState,
     params: DocumentSymbolParams,
 ) -> anyhow::Result<Option<DocumentSymbolResponse>> {
-    if let Some(document) = in_memory_document.get(params.text_document.uri.as_str()) {
+    if let Some(document) = state.documents.get(params.text_document.uri.as_str()) {
         let analysis = editor::build(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
@@ -107,7 +107,11 @@ mod test {
         documents: &Documents,
     ) -> anyhow::Result<()> {
         let params = serde_json::from_value(request.params.clone())?;
-        let result = super::handle(documents, params)?;
+        let state = ServerState {
+            documents: documents.clone(),
+            ..Default::default()
+        };
+        let result = super::handle(&state, params)?;
         connection.sender.send(Message::Response(Response::new_ok(
             request.id.clone(),
             result,

@@ -7,18 +7,21 @@
 //! cursor.
 
 #[cfg(test)]
-use crate::server::Document;
-use crate::{editor, server::Documents, syntax};
+use crate::server::{Document, Documents};
+use crate::{editor, server::ServerState, syntax};
 use anyhow::Context;
 #[cfg(test)]
 use lsp_types::Uri;
 use lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind, Position, Range};
 
 /// Handles a `textDocument/hover` request.
-pub fn handle(documents: &Documents, params: HoverParams) -> anyhow::Result<Option<Hover>> {
+pub fn handle(state: &ServerState, params: HoverParams) -> anyhow::Result<Option<Hover>> {
     let text_document_position = params.text_document_position_params;
 
-    if let Some(document) = documents.get(text_document_position.text_document.uri.as_str()) {
+    if let Some(document) = state
+        .documents
+        .get(text_document_position.text_document.uri.as_str())
+    {
         let analysis = editor::build(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
@@ -84,7 +87,11 @@ mod test {
         documents: &Documents,
     ) -> anyhow::Result<()> {
         let params = serde_json::from_value(request.params.clone())?;
-        let result = super::handle(documents, params)?;
+        let state = ServerState {
+            documents: documents.clone(),
+            ..Default::default()
+        };
+        let result = super::handle(&state, params)?;
         connection.sender.send(Message::Response(Response::new_ok(
             request.id.clone(),
             result,

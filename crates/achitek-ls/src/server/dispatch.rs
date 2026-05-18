@@ -5,7 +5,7 @@
 //! literals. That keeps the event loop small and gives us one place to tighten
 //! handler signatures later.
 
-use crate::server::{Documents, ServerState};
+use crate::server::ServerState;
 use anyhow::Context;
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::{
@@ -32,67 +32,47 @@ pub fn handle_request(
     match request.method.as_str() {
         DocumentSymbolRequest::METHOD => on_request::<DocumentSymbolRequest>(
             connection,
-            &state.documents,
+            state,
             request,
             handlers::handle_document_symbol,
         ),
-        Formatting::METHOD => on_request::<Formatting>(
-            connection,
-            &state.documents,
-            request,
-            handlers::handle_formatting,
-        ),
+        Formatting::METHOD => {
+            on_request::<Formatting>(connection, state, request, handlers::handle_formatting)
+        }
         FoldingRangeRequest::METHOD => on_request::<FoldingRangeRequest>(
             connection,
-            &state.documents,
+            state,
             request,
             handlers::handle_folding_range,
         ),
         SelectionRangeRequest::METHOD => on_request::<SelectionRangeRequest>(
             connection,
-            &state.documents,
+            state,
             request,
             handlers::handle_selection_range,
         ),
-        HoverRequest::METHOD => on_request::<HoverRequest>(
-            connection,
-            &state.documents,
-            request,
-            handlers::handle_hover,
-        ),
-        Completion::METHOD => on_request::<Completion>(
-            connection,
-            &state.documents,
-            request,
-            handlers::handle_completion,
-        ),
-        GotoDefinition::METHOD => on_request::<GotoDefinition>(
-            connection,
-            &state.documents,
-            request,
-            handlers::handle_definition,
-        ),
-        References::METHOD => on_request::<References>(
-            connection,
-            &state.documents,
-            request,
-            handlers::handle_references,
-        ),
-        Rename::METHOD => on_request::<Rename>(
-            connection,
-            &state.documents,
-            request,
-            handlers::handle_rename,
-        ),
+        HoverRequest::METHOD => {
+            on_request::<HoverRequest>(connection, state, request, handlers::handle_hover)
+        }
+        Completion::METHOD => {
+            on_request::<Completion>(connection, state, request, handlers::handle_completion)
+        }
+        GotoDefinition::METHOD => {
+            on_request::<GotoDefinition>(connection, state, request, handlers::handle_definition)
+        }
+        References::METHOD => {
+            on_request::<References>(connection, state, request, handlers::handle_references)
+        }
+        Rename::METHOD => on_request::<Rename>(connection, state, request, handlers::handle_rename),
         PrepareRenameRequest::METHOD => on_request::<PrepareRenameRequest>(
             connection,
-            &state.documents,
+            state,
             request,
             handlers::handle_prepare_rename,
         ),
         WorkspaceSymbolRequest::METHOD => on_request::<WorkspaceSymbolRequest>(
             connection,
-            &state.documents,
+            state,
             request,
             handlers::handle_workspace_symbol,
         ),
@@ -137,9 +117,9 @@ pub fn handle_notification(
 
 fn on_request<R>(
     connection: &Connection,
-    documents: &Documents,
+    state: &ServerState,
     request: Request,
-    handler: fn(&Documents, R::Params) -> anyhow::Result<R::Result>,
+    handler: fn(&ServerState, R::Params) -> anyhow::Result<R::Result>,
 ) -> anyhow::Result<()>
 where
     R: lsp_types::request::Request,
@@ -147,7 +127,7 @@ where
     R::Result: Serialize,
 {
     let response = match serde_json::from_value(request.params) {
-        Ok(params) => match handler(documents, params) {
+        Ok(params) => match handler(state, params) {
             Ok(result) => Response::new_ok(request.id, result),
             Err(error) => Response::new_err(
                 request.id,

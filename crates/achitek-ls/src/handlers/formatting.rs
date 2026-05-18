@@ -12,9 +12,9 @@
 //! layout pass: it trims each line, applies two-space indentation for nested
 //! blocks, and returns a single full-document replacement edit when the text
 //! changes.
+use crate::server::ServerState;
 #[cfg(test)]
-use crate::server::Document;
-use crate::server::Documents;
+use crate::server::{Document, Documents};
 #[cfg(test)]
 use lsp_types::Uri;
 use lsp_types::{DocumentFormattingParams, Position, Range, TextEdit};
@@ -26,10 +26,10 @@ use lsp_types::{DocumentFormattingParams, Position, Range, TextEdit};
 /// or one full-document replacement edit. If the document is unknown, the
 /// handler returns `null`.
 pub fn handle(
-    documents: &Documents,
+    state: &ServerState,
     params: DocumentFormattingParams,
 ) -> anyhow::Result<Option<Vec<TextEdit>>> {
-    if let Some(document) = documents.get(params.text_document.uri.as_str()) {
+    if let Some(document) = state.documents.get(params.text_document.uri.as_str()) {
         let formatted = format_achitek_source(&document.text);
 
         if formatted == document.text {
@@ -105,7 +105,11 @@ mod test {
         documents: &Documents,
     ) -> anyhow::Result<()> {
         let params = serde_json::from_value(request.params.clone())?;
-        let result = super::handle(documents, params)?;
+        let state = ServerState {
+            documents: documents.clone(),
+            ..Default::default()
+        };
+        let result = super::handle(&state, params)?;
         connection.sender.send(Message::Response(Response::new_ok(
             request.id.clone(),
             result,
