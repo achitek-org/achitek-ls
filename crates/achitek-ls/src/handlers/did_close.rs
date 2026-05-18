@@ -5,12 +5,13 @@
 //! Clients send this notification after a document is closed. The server drops
 //! the in-memory buffer and clears diagnostics for that URI.
 
-use super::diagnostics;
+use crate::lsp::publish;
 #[cfg(test)]
 use crate::server::Document;
+#[cfg(test)]
 use crate::server::Documents;
-use anyhow::Context;
-use lsp_server::{Connection, Notification};
+use crate::server::ServerState;
+use lsp_server::Connection;
 use lsp_types::DidCloseTextDocumentParams;
 #[cfg(test)]
 use lsp_types::Uri;
@@ -18,29 +19,44 @@ use lsp_types::Uri;
 /// Handles a `textDocument/didClose` notification.
 pub fn handle(
     connection: &Connection,
-    notification: &Notification,
-    documents: &mut Documents,
+    state: &mut ServerState,
+    params: DidCloseTextDocumentParams,
 ) -> anyhow::Result<()> {
-    let params: DidCloseTextDocumentParams = serde_json::from_value(notification.params.clone())
-        .context("failed to parse didClose params")?;
     let uri = params.text_document.uri;
 
-    if documents.remove(uri.as_str()).is_some() {
+    if state.documents.remove(uri.as_str()).is_some() {
+        state.remove_document_kind(&uri);
         tracing::debug!(?uri, "closed document");
     } else {
         tracing::warn!(?uri, "received close for unknown document");
     }
-    diagnostics::clear(connection, &uri)
+    publish::clear(connection, &uri)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use lsp_server::Message;
+    use lsp_server::{Connection, Message, Notification};
     use lsp_types::{
         PublishDiagnosticsParams, TextDocumentIdentifier,
         notification::{DidCloseTextDocument, Notification as LspNotification},
     };
+
+    fn handle(
+        connection: &Connection,
+        notification: &Notification,
+        documents: &mut Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(notification.params.clone())?;
+        let mut state = ServerState {
+            documents: std::mem::take(documents),
+            document_kinds: Default::default(),
+            workspace: Default::default(),
+        };
+        let result = super::handle(connection, &mut state, params);
+        *documents = state.documents;
+        result
+    }
 
     #[test]
     fn handle_did_close_removes_document_and_clears_diagnostics() -> anyhow::Result<()> {

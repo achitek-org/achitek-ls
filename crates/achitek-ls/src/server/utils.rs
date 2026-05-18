@@ -6,11 +6,12 @@
 
 #[cfg(test)]
 use crate::server::Document;
-use crate::{analysis, server::Documents};
+use crate::workspace::Workspace;
+use crate::{editor, server::Documents};
 use anyhow::Context;
 use lsp_types::{
-    Diagnostic as LspDiagnostic, DiagnosticSeverity, GotoDefinitionResponse, Location, Position,
-    Range, Uri,
+    Diagnostic as LspDiagnostic, DiagnosticSeverity, GotoDefinitionResponse, Location,
+    NumberOrString, Position, Range, Uri,
 };
 use std::{
     collections::HashSet,
@@ -21,15 +22,24 @@ use std::{
 pub fn diagnostics(
     uri: &Uri,
     documents: &Documents,
+    workspace: &Workspace,
 ) -> anyhow::Result<Vec<(Uri, Vec<LspDiagnostic>)>> {
+    if is_tera_uri(uri) {
+        return Ok(Vec::new());
+    }
+
     let Some(document) = documents.get(uri.as_str()) else {
         return Ok(Vec::new());
     };
-    let Some(blueprint_dir) = blueprint_dir_from_uri(uri) else {
+    let Some(blueprint_dir) = workspace
+        .project_for_uri(uri)
+        .map(|project| project.root().to_path_buf())
+        .or_else(|| blueprint_dir_from_uri(uri))
+    else {
         return Ok(Vec::new());
     };
 
-    let analysis = analysis::analyze(&document.text)
+    let analysis = achitekfile::analyze(&document.text)
         .with_context(|| format!("failed to analyze document `{:?}`", uri))?;
     let prompt_names = prompt_name_set(&analysis);
     tracing::debug!(
@@ -77,10 +87,10 @@ pub fn definition(
         .get(achitek_uri.as_str())
         .map(|document| document.text.clone())
         .unwrap_or_else(|| fs::read_to_string(&achitek_path).unwrap_or_default());
-    let analysis = analysis::analyze(&achitek_source)
+    let analysis = editor::build(&achitek_source)
         .with_context(|| format!("failed to analyze `{}`", achitek_path.display()))?;
     let Some(symbol) = analysis.symbols().iter().find(|symbol| {
-        symbol.kind() == analysis::SymbolKind::Prompt && symbol.name() == reference_name
+        symbol.kind() == editor::SymbolKind::Prompt && symbol.name() == reference_name
     }) else {
         tracing::debug!(
             ?uri,
@@ -151,7 +161,7 @@ fn collect_diagnostics(
             continue;
         }
 
-        if path.extension().and_then(|ext| ext.to_str()) != Some("tera") {
+        if !is_tera_path(&path) {
             continue;
         }
 
@@ -159,10 +169,34 @@ fn collect_diagnostics(
             .with_context(|| format!("failed to read template `{}`", path.display()))?;
         let uri = path_to_uri(&path)
             .with_context(|| format!("failed to convert `{}` to a file URI", path.display()))?;
-        diagnostics.push((uri.clone(), unknown_references(&source, &uri, prompt_names)));
+        let mut template_diagnostics = tera_diagnostics(&source)?;
+        template_diagnostics.extend(unknown_references(&source, &uri, prompt_names));
+        diagnostics.push((uri.clone(), template_diagnostics));
     }
 
     Ok(())
+}
+
+fn tera_diagnostics(source: &str) -> anyhow::Result<Vec<LspDiagnostic>> {
+    let analysis = terafile::analyze(source).context("failed to analyze Tera template")?;
+
+    Ok(analysis
+        .diagnostics()
+        .iter()
+        .map(|diagnostic| LspDiagnostic {
+            range: tera_range_to_lsp(diagnostic.range()),
+            severity: Some(match diagnostic.severity() {
+                terafile::Severity::Error => DiagnosticSeverity::ERROR,
+                terafile::Severity::Warning => DiagnosticSeverity::WARNING,
+                terafile::Severity::Hint => DiagnosticSeverity::HINT,
+            }),
+            code: Some(NumberOrString::String(
+                diagnostic.code().as_str().to_owned(),
+            )),
+            message: diagnostic.message().to_owned(),
+            ..LspDiagnostic::default()
+        })
+        .collect())
 }
 
 fn unknown_references(
@@ -198,7 +232,7 @@ fn collect_references(
             continue;
         }
 
-        if path.extension().and_then(|ext| ext.to_str()) != Some("tera") {
+        if !is_tera_path(&path) {
             continue;
         }
 
@@ -361,12 +395,12 @@ fn is_tera_keyword(name: &str) -> bool {
     )
 }
 
-fn prompt_name_set(analysis: &analysis::Analysis) -> HashSet<String> {
+fn prompt_name_set(analysis: &achitekfile::Analysis<'_>) -> HashSet<String> {
     analysis
-        .symbols()
+        .file()
+        .prompts()
         .iter()
-        .filter(|symbol| symbol.kind() == analysis::SymbolKind::Prompt)
-        .map(|symbol| symbol.name().to_owned())
+        .map(|prompt| prompt.value.name.clone())
         .collect()
 }
 
@@ -403,6 +437,14 @@ pub fn file_path_from_uri(uri: &Uri) -> Option<PathBuf> {
     Some(PathBuf::from(path))
 }
 
+pub fn is_tera_uri(uri: &Uri) -> bool {
+    file_path_from_uri(uri).is_some_and(|path| is_tera_path(&path))
+}
+
+fn is_tera_path(path: &Path) -> bool {
+    path.extension().and_then(|ext| ext.to_str()) == Some("tera")
+}
+
 pub fn path_to_uri(path: &Path) -> anyhow::Result<Uri> {
     let path = path
         .canonicalize()
@@ -417,6 +459,20 @@ fn to_lsp_position(position: crate::syntax::TextPosition) -> Position {
     Position {
         line: u32::try_from(position.row).expect("line should fit into u32"),
         character: u32::try_from(position.column).expect("column should fit into u32"),
+    }
+}
+
+fn tera_range_to_lsp(range: terafile::TextRange) -> Range {
+    Range {
+        start: tera_position_to_lsp(range.start),
+        end: tera_position_to_lsp(range.end),
+    }
+}
+
+fn tera_position_to_lsp(position: terafile::TextPosition) -> Position {
+    Position {
+        line: u32::try_from(position.line).expect("line should fit into u32"),
+        character: u32::try_from(position.byte).expect("column should fit into u32"),
     }
 }
 
@@ -501,7 +557,7 @@ mod test {
             },
         )]);
 
-        let diagnostics = diagnostics(&achitek_uri, &documents)?;
+        let diagnostics = diagnostics(&achitek_uri, &documents, &Workspace::default())?;
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].0, template_uri);
@@ -510,6 +566,61 @@ mod test {
             diagnostics[0].1[0].message,
             "unknown prompt reference `missing_prompt`"
         );
+
+        fs::remove_dir_all(&temp_root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn diagnostics_includes_tera_template_diagnostics() -> anyhow::Result<()> {
+        let temp_root = utils::temp_dir("achitek-template-tera-diagnostics")?;
+        fs::create_dir_all(&temp_root)?;
+        let achitek_path = temp_root.join("Achitekfile");
+        fs::write(&achitek_path, source())?;
+        let template_path = temp_root.join("Cargo.toml.tera");
+        fs::write(&template_path, "name = {{ project_name")?;
+        let achitek_uri = path_to_uri(&achitek_path)?;
+        let template_uri = path_to_uri(&template_path)?;
+        let documents = Documents::from([(
+            achitek_uri.as_str().to_owned(),
+            Document {
+                version: 1,
+                text: source(),
+            },
+        )]);
+
+        let diagnostics = diagnostics(&achitek_uri, &documents, &Workspace::default())?;
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].0, template_uri);
+        assert_eq!(diagnostics[0].1.len(), 1);
+        assert_eq!(
+            diagnostics[0].1[0].code,
+            Some(NumberOrString::String("TERA0001".to_owned()))
+        );
+
+        fs::remove_dir_all(&temp_root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn diagnostics_skips_template_uri_rescans() -> anyhow::Result<()> {
+        let temp_root = utils::temp_dir("achitek-template-rescan-skip")?;
+        fs::create_dir_all(&temp_root)?;
+        let template_path = temp_root.join("Cargo.toml.tera");
+        fs::write(&template_path, "{{ missing_prompt }}")?;
+        let template_uri = path_to_uri(&template_path)?;
+        let documents = Documents::from([(
+            template_uri.as_str().to_owned(),
+            Document {
+                version: 1,
+                text: "{{ missing_prompt }}".to_owned(),
+            },
+        )]);
+
+        let diagnostics = diagnostics(&template_uri, &documents, &Workspace::default())?;
+
+        assert!(diagnostics.is_empty());
 
         fs::remove_dir_all(&temp_root)?;
         Ok(())

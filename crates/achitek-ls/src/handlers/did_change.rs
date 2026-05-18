@@ -7,12 +7,13 @@
 //! text before diagnostics are republished for both the document and nearby
 //! `.tera` templates that reference its prompts.
 
-use super::diagnostics;
+use crate::lsp::publish;
 #[cfg(test)]
 use crate::server::Document;
+#[cfg(test)]
 use crate::server::Documents;
-use anyhow::Context;
-use lsp_server::{Connection, Notification};
+use crate::server::ServerState;
+use lsp_server::Connection;
 #[cfg(test)]
 use lsp_types::Uri;
 use lsp_types::{DidChangeTextDocumentParams, TextDocumentContentChangeEvent};
@@ -20,21 +21,19 @@ use lsp_types::{DidChangeTextDocumentParams, TextDocumentContentChangeEvent};
 /// Handles a `textDocument/didChange` notification.
 pub fn handle(
     connection: &Connection,
-    notification: &Notification,
-    documents: &mut Documents,
+    state: &mut ServerState,
+    params: DidChangeTextDocumentParams,
 ) -> anyhow::Result<()> {
-    let params: DidChangeTextDocumentParams = serde_json::from_value(notification.params.clone())
-        .context("failed to parse didChange params")?;
     let uri = params.text_document.uri;
     let version = params.text_document.version;
     let change_count = params.content_changes.len();
 
-    if let Some(document) = documents.get_mut(uri.as_str()) {
+    if let Some(document) = state.documents.get_mut(uri.as_str()) {
         document.version = version;
         document.text = apply_content_changes(&document.text, &params.content_changes);
         tracing::debug!(?uri, version, change_count, "changed document");
-        diagnostics::publish(connection, &uri, documents)?;
-        diagnostics::publish_templates(connection, &uri, documents)?;
+        publish::publish(connection, &uri, state)?;
+        publish::publish_templates(connection, &uri, state)?;
     } else {
         tracing::warn!(
             ?uri,
@@ -63,12 +62,28 @@ mod test {
     use super::*;
     use crate::server::utils;
     use indoc::indoc;
-    use lsp_server::Message;
+    use lsp_server::{Connection, Message, Notification};
     use lsp_types::{
         PublishDiagnosticsParams, VersionedTextDocumentIdentifier,
         notification::{DidChangeTextDocument, Notification as LspNotification},
     };
     use std::fs;
+
+    fn handle(
+        connection: &Connection,
+        notification: &Notification,
+        documents: &mut Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(notification.params.clone())?;
+        let mut state = ServerState {
+            documents: std::mem::take(documents),
+            document_kinds: Default::default(),
+            workspace: Default::default(),
+        };
+        let result = super::handle(connection, &mut state, params);
+        *documents = state.documents;
+        result
+    }
 
     #[test]
     fn handle_did_change_updates_document_and_publishes_diagnostics() -> anyhow::Result<()> {

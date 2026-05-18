@@ -11,58 +11,45 @@
 #[cfg(test)]
 use crate::server::Document;
 use crate::{
-    analysis,
+    editor,
     server::{Documents, utils},
     syntax,
 };
 use anyhow::Context;
-use lsp_server::{Connection, Message, Request, Response};
 #[cfg(test)]
 use lsp_types::Uri;
 use lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, Location, Position, Range};
 
 /// Handles a `textDocument/definition` request.
 pub fn handle(
-    connection: &Connection,
-    request: &Request,
     documents: &Documents,
-) -> anyhow::Result<()> {
-    let params: GotoDefinitionParams = serde_json::from_value(request.params.clone())
-        .context("failed to parse definition params")?;
+    params: GotoDefinitionParams,
+) -> anyhow::Result<Option<GotoDefinitionResponse>> {
     let text_document_position = params.text_document_position_params;
 
-    let result =
-        if let Some(document) = documents.get(text_document_position.text_document.uri.as_str()) {
-            let analysis = analysis::analyze(&document.text).with_context(|| {
-                format!(
-                    "failed to analyze document `{:?}`",
-                    text_document_position.text_document.uri
-                )
-            })?;
+    if let Some(document) = documents.get(text_document_position.text_document.uri.as_str()) {
+        let analysis = editor::build(&document.text).with_context(|| {
+            format!(
+                "failed to analyze document `{:?}`",
+                text_document_position.text_document.uri
+            )
+        })?;
 
-            analysis
-                .definition(to_text_position(text_document_position.position))
-                .map(|target| {
-                    GotoDefinitionResponse::Scalar(Location::new(
-                        text_document_position.text_document.uri,
-                        to_lsp_range(target.selection_range()),
-                    ))
-                })
-        } else {
-            utils::definition(
-                &text_document_position.text_document.uri,
-                text_document_position.position,
-                documents,
-            )?
-        };
-
-    let response = Response::new_ok(request.id.clone(), result);
-    connection
-        .sender
-        .send(Message::Response(response))
-        .context("failed to send definition response")?;
-
-    Ok(())
+        Ok(analysis
+            .definition(to_text_position(text_document_position.position))
+            .map(|target| {
+                GotoDefinitionResponse::Scalar(Location::new(
+                    text_document_position.text_document.uri,
+                    to_lsp_range(target.selection_range()),
+                ))
+            }))
+    } else {
+        utils::definition(
+            &text_document_position.text_document.uri,
+            text_document_position.position,
+            documents,
+        )
+    }
 }
 
 fn to_text_position(position: Position) -> syntax::TextPosition {
@@ -90,12 +77,26 @@ fn to_lsp_position(position: syntax::TextPosition) -> Position {
 mod test {
     use super::*;
     use indoc::indoc;
-    use lsp_server::RequestId;
+    use lsp_server::{Connection, Message, Request, RequestId, Response};
     use lsp_types::{
         TextDocumentIdentifier, TextDocumentPositionParams,
         request::{GotoDefinition, Request as LspRequest},
     };
     use std::fs;
+
+    fn handle(
+        connection: &Connection,
+        request: &Request,
+        documents: &Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(request.params.clone())?;
+        let result = super::handle(documents, params)?;
+        connection.sender.send(Message::Response(Response::new_ok(
+            request.id.clone(),
+            result,
+        )))?;
+        Ok(())
+    }
 
     #[test]
     fn handle_definition_request() -> anyhow::Result<()> {

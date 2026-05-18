@@ -8,9 +8,8 @@
 
 #[cfg(test)]
 use crate::server::Document;
-use crate::{analysis, server::Documents, syntax};
+use crate::{editor, server::Documents, syntax};
 use anyhow::Context;
-use lsp_server::{Connection, Message, Request, Response};
 use lsp_types::{
     Location, Position, Range, SymbolInformation, SymbolKind as LspSymbolKind, Uri,
     WorkspaceSymbolParams, WorkspaceSymbolResponse,
@@ -18,12 +17,9 @@ use lsp_types::{
 
 /// Handles a `workspace/symbol` request.
 pub fn handle(
-    connection: &Connection,
-    request: &Request,
     documents: &Documents,
-) -> anyhow::Result<()> {
-    let params: WorkspaceSymbolParams = serde_json::from_value(request.params.clone())
-        .context("failed to parse workspace symbol params")?;
+    params: WorkspaceSymbolParams,
+) -> anyhow::Result<Option<WorkspaceSymbolResponse>> {
     let query = params.query.to_lowercase();
     let mut symbols = Vec::new();
 
@@ -31,11 +27,11 @@ pub fn handle(
         let uri = uri
             .parse::<Uri>()
             .with_context(|| format!("failed to parse document URI `{uri}`"))?;
-        let analysis = analysis::analyze(&document.text)
+        let analysis = editor::build(&document.text)
             .with_context(|| format!("failed to analyze document `{:?}`", uri))?;
 
         for symbol in analysis.symbols() {
-            if symbol.kind() != analysis::SymbolKind::Prompt {
+            if symbol.kind() != editor::SymbolKind::Prompt {
                 continue;
             }
             if !query.is_empty() && !symbol.name().to_lowercase().contains(&query) {
@@ -46,26 +42,17 @@ pub fn handle(
         }
     }
 
-    let response = Response::new_ok(
-        request.id.clone(),
-        Some(WorkspaceSymbolResponse::Flat(symbols)),
-    );
-    connection
-        .sender
-        .send(Message::Response(response))
-        .context("failed to send workspace symbol response")?;
-
-    Ok(())
+    Ok(Some(WorkspaceSymbolResponse::Flat(symbols)))
 }
 
 #[allow(deprecated)]
-fn to_lsp_symbol_information(uri: &Uri, symbol: &analysis::Symbol) -> SymbolInformation {
+fn to_lsp_symbol_information(uri: &Uri, symbol: &editor::Symbol) -> SymbolInformation {
     SymbolInformation {
         name: symbol.name().to_owned(),
         kind: match symbol.kind() {
-            analysis::SymbolKind::Blueprint => LspSymbolKind::MODULE,
-            analysis::SymbolKind::Prompt => LspSymbolKind::FIELD,
-            analysis::SymbolKind::Validate => LspSymbolKind::OBJECT,
+            editor::SymbolKind::Blueprint => LspSymbolKind::MODULE,
+            editor::SymbolKind::Prompt => LspSymbolKind::FIELD,
+            editor::SymbolKind::Validate => LspSymbolKind::OBJECT,
         },
         tags: None,
         deprecated: None,
@@ -92,8 +79,22 @@ fn to_lsp_position(position: syntax::TextPosition) -> Position {
 mod test {
     use super::*;
     use indoc::indoc;
-    use lsp_server::RequestId;
+    use lsp_server::{Connection, Message, Request, RequestId, Response};
     use lsp_types::request::{Request as LspRequest, WorkspaceSymbolRequest};
+
+    fn handle(
+        connection: &Connection,
+        request: &Request,
+        documents: &Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(request.params.clone())?;
+        let result = super::handle(documents, params)?;
+        connection.sender.send(Message::Response(Response::new_ok(
+            request.id.clone(),
+            result,
+        )))?;
+        Ok(())
+    }
 
     #[test]
     fn handle_workspace_symbol_request() -> anyhow::Result<()> {

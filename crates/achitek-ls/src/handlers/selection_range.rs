@@ -12,9 +12,8 @@
 
 #[cfg(test)]
 use crate::server::Document;
-use crate::{analysis, server::Documents, syntax};
+use crate::{editor, server::Documents, syntax};
 use anyhow::Context;
-use lsp_server::{Connection, Message, Request, Response};
 #[cfg(test)]
 use lsp_types::Uri;
 use lsp_types::{Position, Range, SelectionRange, SelectionRangeParams};
@@ -26,44 +25,32 @@ use lsp_types::{Position, Range, SelectionRange, SelectionRangeParams};
 /// range chain for each requested position that falls inside a known symbol. If
 /// the document is unknown, the handler returns `null`.
 pub fn handle(
-    connection: &Connection,
-    request: &Request,
     documents: &Documents,
-) -> anyhow::Result<()> {
-    let params: SelectionRangeParams = serde_json::from_value(request.params.clone())
-        .context("failed to parse selectionRange params")?;
-
-    let result = if let Some(document) = documents.get(params.text_document.uri.as_str()) {
-        let analysis = analysis::analyze(&document.text).with_context(|| {
+    params: SelectionRangeParams,
+) -> anyhow::Result<Option<Vec<SelectionRange>>> {
+    if let Some(document) = documents.get(params.text_document.uri.as_str()) {
+        let analysis = editor::build(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
                 params.text_document.uri
             )
         })?;
 
-        Some(
+        Ok(Some(
             params
                 .positions
                 .iter()
                 .filter_map(|position| selection_range_for_position(&analysis, *position))
                 .collect::<Vec<_>>(),
-        )
+        ))
     } else {
-        None
-    };
-
-    let response = Response::new_ok(request.id.clone(), result);
-    connection
-        .sender
-        .send(Message::Response(response))
-        .context("failed to send selectionRange response")?;
-
-    Ok(())
+        Ok(None)
+    }
 }
 
 /// Builds the nested LSP selection range for a single position.
 fn selection_range_for_position(
-    analysis: &analysis::Analysis,
+    analysis: &editor::DocumentModel,
     position: Position,
 ) -> Option<SelectionRange> {
     let position = syntax::TextPosition {
@@ -102,7 +89,7 @@ fn selection_range_for_position(
 
 /// Collects symbol ranges that contain the requested position.
 fn collect_selection_candidates(
-    symbol: &analysis::Symbol,
+    symbol: &editor::Symbol,
     position: syntax::TextPosition,
     candidates: &mut Vec<syntax::TextRange>,
 ) {
@@ -128,7 +115,7 @@ fn contains_position(range: syntax::TextRange, position: syntax::TextPosition) -
                 && position.column <= range.end_position.column))
 }
 
-/// Converts an analysis text range into an LSP range.
+/// Converts an editor text range into an LSP range.
 fn to_lsp_range(range: syntax::TextRange) -> Range {
     Range {
         start: to_lsp_position(range.start_position),
@@ -136,7 +123,7 @@ fn to_lsp_range(range: syntax::TextRange) -> Range {
     }
 }
 
-/// Converts a zero-based analysis text position into an LSP position.
+/// Converts a zero-based editor text position into an LSP position.
 fn to_lsp_position(position: syntax::TextPosition) -> Position {
     Position {
         line: u32::try_from(position.row).expect("line should fit into u32"),
@@ -148,11 +135,25 @@ fn to_lsp_position(position: syntax::TextPosition) -> Position {
 mod test {
     use super::*;
     use indoc::indoc;
-    use lsp_server::RequestId;
+    use lsp_server::{Connection, Message, Request, RequestId, Response};
     use lsp_types::{
         TextDocumentIdentifier,
         request::{Request as LspRequest, SelectionRangeRequest},
     };
+
+    fn handle(
+        connection: &Connection,
+        request: &Request,
+        documents: &Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(request.params.clone())?;
+        let result = super::handle(documents, params)?;
+        connection.sender.send(Message::Response(Response::new_ok(
+            request.id.clone(),
+            result,
+        )))?;
+        Ok(())
+    }
 
     #[test]
     fn handle_selection_range_request() -> anyhow::Result<()> {

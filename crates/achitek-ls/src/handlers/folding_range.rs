@@ -7,16 +7,15 @@
 //! and to support commands such as folding the current block or all foldable
 //! blocks in a file.
 //!
-//! For Achitekfiles, folding ranges are derived from analyzed document symbols.
+//! For Achitekfiles, folding ranges are derived from editor document symbols.
 //! Multi-line `blueprint`, `prompt`, and nested `validate` symbols become
 //! foldable ranges, with the symbol name used as collapsed text when supported
 //! by the client.
 
 #[cfg(test)]
 use crate::server::Document;
-use crate::{analysis, server::Documents};
+use crate::{editor, server::Documents};
 use anyhow::Context;
-use lsp_server::{Connection, Message, Request, Response};
 #[cfg(test)]
 use lsp_types::Uri;
 use lsp_types::{FoldingRange, FoldingRangeParams};
@@ -28,15 +27,11 @@ use lsp_types::{FoldingRange, FoldingRangeParams};
 /// for multi-line Achitek symbols. If the document is unknown, the handler
 /// returns `null`.
 pub fn handle(
-    connection: &Connection,
-    request: &Request,
     documents: &Documents,
-) -> anyhow::Result<()> {
-    let params: FoldingRangeParams = serde_json::from_value(request.params.clone())
-        .context("failed to parse foldingRange params")?;
-
-    let result = if let Some(document) = documents.get(params.text_document.uri.as_str()) {
-        let analysis = analysis::analyze(&document.text).with_context(|| {
+    params: FoldingRangeParams,
+) -> anyhow::Result<Option<Vec<FoldingRange>>> {
+    if let Some(document) = documents.get(params.text_document.uri.as_str()) {
+        let analysis = editor::build(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
                 params.text_document.uri
@@ -48,22 +43,14 @@ pub fn handle(
             collect_folding_ranges(symbol, &mut ranges);
         }
 
-        Some(ranges)
+        Ok(Some(ranges))
     } else {
-        None
-    };
-
-    let response = Response::new_ok(request.id.clone(), result);
-    connection
-        .sender
-        .send(Message::Response(response))
-        .context("failed to send foldingRange response")?;
-
-    Ok(())
+        Ok(None)
+    }
 }
 
-/// Collects foldable ranges from an analysis symbol and its children.
-fn collect_folding_ranges(symbol: &analysis::Symbol, ranges: &mut Vec<FoldingRange>) {
+/// Collects foldable ranges from an editor symbol and its children.
+fn collect_folding_ranges(symbol: &editor::Symbol, ranges: &mut Vec<FoldingRange>) {
     let range = symbol.range();
 
     if range.start_position.row < range.end_position.row {
@@ -90,11 +77,25 @@ fn collect_folding_ranges(symbol: &analysis::Symbol, ranges: &mut Vec<FoldingRan
 mod test {
     use super::*;
     use indoc::indoc;
-    use lsp_server::RequestId;
+    use lsp_server::{Connection, Message, Request, RequestId, Response};
     use lsp_types::{
         TextDocumentIdentifier,
         request::{FoldingRangeRequest, Request as LspRequest},
     };
+
+    fn handle(
+        connection: &Connection,
+        request: &Request,
+        documents: &Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(request.params.clone())?;
+        let result = super::handle(documents, params)?;
+        connection.sender.send(Message::Response(Response::new_ok(
+            request.id.clone(),
+            result,
+        )))?;
+        Ok(())
+    }
 
     #[test]
     fn handle_folding_range_request() -> anyhow::Result<()> {

@@ -8,49 +8,33 @@
 
 #[cfg(test)]
 use crate::server::Document;
-use crate::{analysis, server::Documents, syntax};
+use crate::{editor, server::Documents, syntax};
 use anyhow::Context;
-use lsp_server::{Connection, Message, Request, Response};
 #[cfg(test)]
 use lsp_types::Uri;
 use lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind, Position, Range};
 
 /// Handles a `textDocument/hover` request.
-pub fn handle(
-    connection: &Connection,
-    request: &Request,
-    documents: &Documents,
-) -> anyhow::Result<()> {
-    let params: HoverParams =
-        serde_json::from_value(request.params.clone()).context("failed to parse hover params")?;
+pub fn handle(documents: &Documents, params: HoverParams) -> anyhow::Result<Option<Hover>> {
     let text_document_position = params.text_document_position_params;
 
-    let result =
-        if let Some(document) = documents.get(text_document_position.text_document.uri.as_str()) {
-            let analysis = analysis::analyze(&document.text).with_context(|| {
-                format!(
-                    "failed to analyze document `{:?}`",
-                    text_document_position.text_document.uri
-                )
-            })?;
-            analysis
-                .hover(to_text_position(text_document_position.position))
-                .map(to_lsp_hover)
-        } else {
-            None
-        };
-
-    let response = Response::new_ok(request.id.clone(), result);
-    connection
-        .sender
-        .send(Message::Response(response))
-        .context("failed to send hover response")?;
-
-    Ok(())
+    if let Some(document) = documents.get(text_document_position.text_document.uri.as_str()) {
+        let analysis = editor::build(&document.text).with_context(|| {
+            format!(
+                "failed to analyze document `{:?}`",
+                text_document_position.text_document.uri
+            )
+        })?;
+        Ok(analysis
+            .hover(to_text_position(text_document_position.position))
+            .map(to_lsp_hover))
+    } else {
+        Ok(None)
+    }
 }
 
-/// Converts analysis hover content into an LSP hover response.
-fn to_lsp_hover(hover: analysis::Hover) -> Hover {
+/// Converts editor hover content into an LSP hover response.
+fn to_lsp_hover(hover: editor::Hover) -> Hover {
     Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
@@ -60,7 +44,7 @@ fn to_lsp_hover(hover: analysis::Hover) -> Hover {
     }
 }
 
-/// Converts an LSP position into an analysis position.
+/// Converts an LSP position into an editor position.
 fn to_text_position(position: Position) -> syntax::TextPosition {
     syntax::TextPosition {
         row: usize::try_from(position.line).expect("line should fit into usize"),
@@ -68,7 +52,7 @@ fn to_text_position(position: Position) -> syntax::TextPosition {
     }
 }
 
-/// Converts an analysis text range into an LSP range.
+/// Converts an editor text range into an LSP range.
 fn to_lsp_range(range: syntax::TextRange) -> Range {
     Range {
         start: to_lsp_position(range.start_position),
@@ -76,7 +60,7 @@ fn to_lsp_range(range: syntax::TextRange) -> Range {
     }
 }
 
-/// Converts an analysis text position into an LSP position.
+/// Converts an editor text position into an LSP position.
 fn to_lsp_position(position: syntax::TextPosition) -> Position {
     Position {
         line: u32::try_from(position.row).expect("line should fit into u32"),
@@ -88,11 +72,25 @@ fn to_lsp_position(position: syntax::TextPosition) -> Position {
 mod test {
     use super::*;
     use indoc::indoc;
-    use lsp_server::RequestId;
+    use lsp_server::{Connection, Message, Request, RequestId, Response};
     use lsp_types::{
         TextDocumentIdentifier, TextDocumentPositionParams,
         request::{HoverRequest, Request as LspRequest},
     };
+
+    fn handle(
+        connection: &Connection,
+        request: &Request,
+        documents: &Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(request.params.clone())?;
+        let result = super::handle(documents, params)?;
+        connection.sender.send(Message::Response(Response::new_ok(
+            request.id.clone(),
+            result,
+        )))?;
+        Ok(())
+    }
 
     #[test]
     fn handle_hover_request() -> anyhow::Result<()> {

@@ -2,6 +2,7 @@
 name = "achitekfile"
 authors = ["Samuel Joli <samuel.joli.ftn@gmail.com>"]
 description = "A tree-sitter backed semantic parser for the Achitekfile DSL"
+readme = "README.md"
 repository.workspace = true
 keywords = ["achitek", "parser", "tree-sitter", "dsl", "diagnostics"]
 categories = ["parser-implementations", "development-tools"]

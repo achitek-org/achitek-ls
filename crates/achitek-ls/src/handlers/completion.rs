@@ -8,9 +8,8 @@
 
 #[cfg(test)]
 use crate::server::Document;
-use crate::{analysis, server::Documents, syntax};
+use crate::{editor, server::Documents, syntax};
 use anyhow::Context;
-use lsp_server::{Connection, Message, Request, Response};
 #[cfg(test)]
 use lsp_types::Uri;
 use lsp_types::{
@@ -19,17 +18,12 @@ use lsp_types::{
 
 /// Handles a `textDocument/completion` request.
 pub fn handle(
-    connection: &Connection,
-    request: &Request,
     documents: &Documents,
-) -> anyhow::Result<()> {
-    let params: CompletionParams = serde_json::from_value(request.params.clone())
-        .context("failed to parse completion params")?;
-
-    let result = if let Some(document) =
-        documents.get(params.text_document_position.text_document.uri.as_str())
+    params: CompletionParams,
+) -> anyhow::Result<Option<CompletionResponse>> {
+    if let Some(document) = documents.get(params.text_document_position.text_document.uri.as_str())
     {
-        let analysis = analysis::analyze(&document.text).with_context(|| {
+        let analysis = editor::build(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
                 params.text_document_position.text_document.uri
@@ -41,37 +35,29 @@ pub fn handle(
             .map(to_lsp_completion_item)
             .collect::<Vec<_>>();
 
-        Some(CompletionResponse::Array(items))
+        Ok(Some(CompletionResponse::Array(items)))
     } else {
-        None
-    };
-
-    let response = Response::new_ok(request.id.clone(), result);
-    connection
-        .sender
-        .send(Message::Response(response))
-        .context("failed to send completion response")?;
-
-    Ok(())
+        Ok(None)
+    }
 }
 
-/// Converts an analysis completion into an LSP completion item.
-fn to_lsp_completion_item(item: analysis::Completion) -> CompletionItem {
+/// Converts an editor completion into an LSP completion item.
+fn to_lsp_completion_item(item: editor::Completion) -> CompletionItem {
     CompletionItem {
         label: item.label().to_owned(),
         detail: item.detail().map(str::to_owned),
         kind: Some(match item.kind() {
-            analysis::CompletionKind::Keyword => CompletionItemKind::KEYWORD,
-            analysis::CompletionKind::Property => CompletionItemKind::PROPERTY,
-            analysis::CompletionKind::Value => CompletionItemKind::VALUE,
-            analysis::CompletionKind::Reference => CompletionItemKind::REFERENCE,
-            analysis::CompletionKind::Function => CompletionItemKind::FUNCTION,
+            editor::CompletionKind::Keyword => CompletionItemKind::KEYWORD,
+            editor::CompletionKind::Property => CompletionItemKind::PROPERTY,
+            editor::CompletionKind::Value => CompletionItemKind::VALUE,
+            editor::CompletionKind::Reference => CompletionItemKind::REFERENCE,
+            editor::CompletionKind::Function => CompletionItemKind::FUNCTION,
         }),
         ..CompletionItem::default()
     }
 }
 
-/// Converts an LSP position into an analysis position.
+/// Converts an LSP position into an editor position.
 fn to_text_position(position: Position) -> syntax::TextPosition {
     syntax::TextPosition {
         row: usize::try_from(position.line).expect("line should fit into usize"),
@@ -83,11 +69,25 @@ fn to_text_position(position: Position) -> syntax::TextPosition {
 mod test {
     use super::*;
     use indoc::indoc;
-    use lsp_server::RequestId;
+    use lsp_server::{Connection, Message, Request, RequestId, Response};
     use lsp_types::{
         TextDocumentIdentifier, TextDocumentPositionParams,
         request::{Completion, Request as LspRequest},
     };
+
+    fn handle(
+        connection: &Connection,
+        request: &Request,
+        documents: &Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(request.params.clone())?;
+        let result = super::handle(documents, params)?;
+        connection.sender.send(Message::Response(Response::new_ok(
+            request.id.clone(),
+            result,
+        )))?;
+        Ok(())
+    }
 
     #[test]
     fn handle_completion_request() -> anyhow::Result<()> {

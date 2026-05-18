@@ -10,30 +10,24 @@
 #[cfg(test)]
 use crate::server::Document;
 use crate::{
-    analysis,
+    editor,
     server::{Documents, utils},
     syntax,
 };
 use anyhow::Context;
-use lsp_server::{Connection, Message, Request, Response};
 use lsp_types::{Position, Range, RenameParams, TextEdit, Uri, WorkspaceEdit};
 use std::{collections::HashMap, fs};
 
 /// Handles a `textDocument/rename` request.
 #[allow(clippy::mutable_key_type)]
 pub fn handle(
-    connection: &Connection,
-    request: &Request,
     documents: &Documents,
-) -> anyhow::Result<()> {
-    let params: RenameParams =
-        serde_json::from_value(request.params.clone()).context("failed to parse rename params")?;
+    params: RenameParams,
+) -> anyhow::Result<Option<WorkspaceEdit>> {
     let text_document_position = params.text_document_position;
 
-    let result = if let Some(document) =
-        documents.get(text_document_position.text_document.uri.as_str())
-    {
-        let analysis = analysis::analyze(&document.text).with_context(|| {
+    if let Some(document) = documents.get(text_document_position.text_document.uri.as_str()) {
+        let analysis = editor::build(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
                 text_document_position.text_document.uri
@@ -41,7 +35,7 @@ pub fn handle(
         })?;
         let cursor_position = to_text_position(text_document_position.position);
         let Some(prompt_name) = analysis.prompt_name(cursor_position).map(str::to_owned) else {
-            return send_response(connection, request, None);
+            return Ok(None);
         };
         let references = analysis.references(cursor_position, true);
         let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
@@ -77,30 +71,14 @@ pub fn handle(
             }
         }
 
-        Some(WorkspaceEdit {
+        Ok(Some(WorkspaceEdit {
             changes: Some(changes),
             document_changes: None,
             change_annotations: None,
-        })
+        }))
     } else {
-        None
-    };
-
-    send_response(connection, request, result)
-}
-
-fn send_response(
-    connection: &Connection,
-    request: &Request,
-    result: Option<WorkspaceEdit>,
-) -> anyhow::Result<()> {
-    let response = Response::new_ok(request.id.clone(), result);
-    connection
-        .sender
-        .send(Message::Response(response))
-        .context("failed to send rename response")?;
-
-    Ok(())
+        Ok(None)
+    }
 }
 
 fn replacement_text_for_range(source: &str, range: &Range, new_name: &str) -> String {
@@ -150,11 +128,25 @@ fn to_lsp_position(position: syntax::TextPosition) -> Position {
 mod test {
     use super::*;
     use indoc::indoc;
-    use lsp_server::RequestId;
+    use lsp_server::{Connection, Message, Request, RequestId, Response};
     use lsp_types::{
         TextDocumentIdentifier, TextDocumentPositionParams,
         request::{Rename, Request as LspRequest},
     };
+
+    fn handle(
+        connection: &Connection,
+        request: &Request,
+        documents: &Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(request.params.clone())?;
+        let result = super::handle(documents, params)?;
+        connection.sender.send(Message::Response(Response::new_ok(
+            request.id.clone(),
+            result,
+        )))?;
+        Ok(())
+    }
 
     #[test]
     #[allow(clippy::mutable_key_type)]

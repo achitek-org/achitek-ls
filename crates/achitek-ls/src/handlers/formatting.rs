@@ -15,8 +15,6 @@
 #[cfg(test)]
 use crate::server::Document;
 use crate::server::Documents;
-use anyhow::Context;
-use lsp_server::{Connection, Message, Request, Response};
 #[cfg(test)]
 use lsp_types::Uri;
 use lsp_types::{DocumentFormattingParams, Position, Range, TextEdit};
@@ -28,34 +26,23 @@ use lsp_types::{DocumentFormattingParams, Position, Range, TextEdit};
 /// or one full-document replacement edit. If the document is unknown, the
 /// handler returns `null`.
 pub fn handle(
-    connection: &Connection,
-    request: &Request,
     documents: &Documents,
-) -> anyhow::Result<()> {
-    let params: DocumentFormattingParams = serde_json::from_value(request.params.clone())
-        .context("failed to parse formatting params")?;
-    let result = if let Some(document) = documents.get(params.text_document.uri.as_str()) {
+    params: DocumentFormattingParams,
+) -> anyhow::Result<Option<Vec<TextEdit>>> {
+    if let Some(document) = documents.get(params.text_document.uri.as_str()) {
         let formatted = format_achitek_source(&document.text);
 
         if formatted == document.text {
-            Some(Vec::new())
+            Ok(Some(Vec::new()))
         } else {
-            Some(vec![TextEdit {
+            Ok(Some(vec![TextEdit {
                 range: full_document_range(&document.text),
                 new_text: formatted,
-            }])
+            }]))
         }
     } else {
-        None
-    };
-    let response = Response::new_ok(request.id.clone(), result);
-
-    connection
-        .sender
-        .send(Message::Response(response))
-        .context("failed to send formatting response")?;
-
-    Ok(())
+        Ok(None)
+    }
 }
 
 /// Formats Achitek source using simple brace-based indentation.
@@ -106,11 +93,25 @@ fn full_document_range(source: &str) -> Range {
 mod test {
     use super::*;
     use indoc::indoc;
-    use lsp_server::RequestId;
+    use lsp_server::{Connection, Message, Request, RequestId, Response};
     use lsp_types::{
         FormattingOptions, TextDocumentIdentifier,
         request::{Formatting, Request as LspRequest},
     };
+
+    fn handle(
+        connection: &Connection,
+        request: &Request,
+        documents: &Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(request.params.clone())?;
+        let result = super::handle(documents, params)?;
+        connection.sender.send(Message::Response(Response::new_ok(
+            request.id.clone(),
+            result,
+        )))?;
+        Ok(())
+    }
 
     #[test]
     fn handle_formatting_request_returns_full_document_edit() -> anyhow::Result<()> {

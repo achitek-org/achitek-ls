@@ -7,10 +7,11 @@
 //! than stale file contents, then publishes diagnostics for that document and
 //! for nearby `.tera` templates that reference its prompts.
 
-use super::diagnostics;
-use crate::server::{Document, Documents};
-use anyhow::Context;
-use lsp_server::{Connection, Notification};
+use crate::lsp::publish;
+#[cfg(test)]
+use crate::server::Documents;
+use crate::server::{Document, ServerState};
+use lsp_server::Connection;
 use lsp_types::DidOpenTextDocumentParams;
 #[cfg(test)]
 use lsp_types::Uri;
@@ -18,25 +19,25 @@ use lsp_types::Uri;
 /// Handles a `textDocument/didOpen` notification.
 pub fn handle(
     connection: &Connection,
-    notification: &Notification,
-    documents: &mut Documents,
+    state: &mut ServerState,
+    params: DidOpenTextDocumentParams,
 ) -> anyhow::Result<()> {
-    let params: DidOpenTextDocumentParams = serde_json::from_value(notification.params.clone())
-        .context("failed to parse didOpen params")?;
     let text_document = params.text_document;
     let uri = text_document.uri;
     let version = text_document.version;
+    let language_id = text_document.language_id;
 
-    documents.insert(
+    state.documents.insert(
         uri.as_str().to_owned(),
         Document {
             version,
             text: text_document.text,
         },
     );
+    state.set_document_kind(&uri, Some(&language_id), None);
     tracing::debug!(?uri, version, "opened document");
-    diagnostics::publish(connection, &uri, documents)?;
-    diagnostics::publish_templates(connection, &uri, documents)
+    publish::publish(connection, &uri, state)?;
+    publish::publish_templates(connection, &uri, state)
 }
 
 #[cfg(test)]
@@ -44,12 +45,28 @@ mod test {
     use super::*;
     use crate::server::utils;
     use indoc::indoc;
-    use lsp_server::Message;
+    use lsp_server::{Connection, Message, Notification};
     use lsp_types::{
         PublishDiagnosticsParams, TextDocumentItem,
         notification::{DidOpenTextDocument, Notification as LspNotification},
     };
     use std::fs;
+
+    fn handle(
+        connection: &Connection,
+        notification: &Notification,
+        documents: &mut Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(notification.params.clone())?;
+        let mut state = ServerState {
+            documents: std::mem::take(documents),
+            document_kinds: Default::default(),
+            workspace: Default::default(),
+        };
+        let result = super::handle(connection, &mut state, params);
+        *documents = state.documents;
+        result
+    }
 
     #[test]
     fn handle_did_open_stores_document_and_publishes_diagnostics() -> anyhow::Result<()> {

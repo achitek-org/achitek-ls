@@ -16,6 +16,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
+ "terafile",
  "thiserror",
  "tracing",
  "tracing-subscriber",

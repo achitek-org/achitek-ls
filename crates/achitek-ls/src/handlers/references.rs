@@ -10,67 +10,54 @@
 #[cfg(test)]
 use crate::server::Document;
 use crate::{
-    analysis,
+    editor,
     server::{Documents, utils},
     syntax,
 };
 use anyhow::Context;
-use lsp_server::{Connection, Message, Request, Response};
 #[cfg(test)]
 use lsp_types::Uri;
 use lsp_types::{Location, Position, Range, ReferenceParams};
 
 /// Handles a `textDocument/references` request.
 pub fn handle(
-    connection: &Connection,
-    request: &Request,
     documents: &Documents,
-) -> anyhow::Result<()> {
-    let params: ReferenceParams = serde_json::from_value(request.params.clone())
-        .context("failed to parse references params")?;
+    params: ReferenceParams,
+) -> anyhow::Result<Option<Vec<Location>>> {
     let text_document_position = params.text_document_position;
 
-    let result =
-        if let Some(document) = documents.get(text_document_position.text_document.uri.as_str()) {
-            let analysis = analysis::analyze(&document.text).with_context(|| {
-                format!(
-                    "failed to analyze document `{:?}`",
-                    text_document_position.text_document.uri
+    if let Some(document) = documents.get(text_document_position.text_document.uri.as_str()) {
+        let analysis = editor::build(&document.text).with_context(|| {
+            format!(
+                "failed to analyze document `{:?}`",
+                text_document_position.text_document.uri
+            )
+        })?;
+        let cursor_position = to_text_position(text_document_position.position);
+        let prompt_name = analysis.prompt_name(cursor_position).map(str::to_owned);
+        let locations = analysis
+            .references(cursor_position, params.context.include_declaration)
+            .into_iter()
+            .map(|target| {
+                Location::new(
+                    text_document_position.text_document.uri.clone(),
+                    to_lsp_range(target.range()),
                 )
-            })?;
-            let cursor_position = to_text_position(text_document_position.position);
-            let prompt_name = analysis.prompt_name(cursor_position).map(str::to_owned);
-            let locations = analysis
-                .references(cursor_position, params.context.include_declaration)
-                .into_iter()
-                .map(|target| {
-                    Location::new(
-                        text_document_position.text_document.uri.clone(),
-                        to_lsp_range(target.range()),
-                    )
-                })
-                .collect::<Vec<_>>();
-            let mut locations = locations;
+            })
+            .collect::<Vec<_>>();
+        let mut locations = locations;
 
-            if let (Some(prompt_name), Some(blueprint_dir)) = (
-                prompt_name,
-                utils::blueprint_dir_from_uri(&text_document_position.text_document.uri),
-            ) {
-                locations.extend(utils::scan_references(&blueprint_dir, &prompt_name)?);
-            }
+        if let (Some(prompt_name), Some(blueprint_dir)) = (
+            prompt_name,
+            utils::blueprint_dir_from_uri(&text_document_position.text_document.uri),
+        ) {
+            locations.extend(utils::scan_references(&blueprint_dir, &prompt_name)?);
+        }
 
-            Some(locations)
-        } else {
-            None
-        };
-
-    let response = Response::new_ok(request.id.clone(), result);
-    connection
-        .sender
-        .send(Message::Response(response))
-        .context("failed to send references response")?;
-
-    Ok(())
+        Ok(Some(locations))
+    } else {
+        Ok(None)
+    }
 }
 
 fn to_text_position(position: Position) -> syntax::TextPosition {
@@ -98,12 +85,26 @@ fn to_lsp_position(position: syntax::TextPosition) -> Position {
 mod test {
     use super::*;
     use indoc::indoc;
-    use lsp_server::RequestId;
+    use lsp_server::{Connection, Message, Request, RequestId, Response};
     use lsp_types::{
         ReferenceContext, TextDocumentIdentifier, TextDocumentPositionParams,
         request::{References, Request as LspRequest},
     };
     use std::fs;
+
+    fn handle(
+        connection: &Connection,
+        request: &Request,
+        documents: &Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(request.params.clone())?;
+        let result = super::handle(documents, params)?;
+        connection.sender.send(Message::Response(Response::new_ok(
+            request.id.clone(),
+            result,
+        )))?;
+        Ok(())
+    }
 
     #[test]
     fn handle_references_request() -> anyhow::Result<()> {

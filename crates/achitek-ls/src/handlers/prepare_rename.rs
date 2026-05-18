@@ -8,46 +8,33 @@
 
 #[cfg(test)]
 use crate::server::Document;
-use crate::{analysis, server::Documents, syntax};
+use crate::{editor, server::Documents, syntax};
 use anyhow::Context;
-use lsp_server::{Connection, Message, Request, Response};
 #[cfg(test)]
 use lsp_types::Uri;
 use lsp_types::{Position, PrepareRenameResponse, Range, TextDocumentPositionParams};
 
 /// Handles a `textDocument/prepareRename` request.
 pub fn handle(
-    connection: &Connection,
-    request: &Request,
     documents: &Documents,
-) -> anyhow::Result<()> {
-    let params: TextDocumentPositionParams = serde_json::from_value(request.params.clone())
-        .context("failed to parse prepareRename params")?;
-
-    let result = if let Some(document) = documents.get(params.text_document.uri.as_str()) {
-        let analysis = analysis::analyze(&document.text).with_context(|| {
+    params: TextDocumentPositionParams,
+) -> anyhow::Result<Option<PrepareRenameResponse>> {
+    if let Some(document) = documents.get(params.text_document.uri.as_str()) {
+        let analysis = editor::build(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
                 params.text_document.uri
             )
         })?;
-        analysis
+        Ok(analysis
             .prepare_rename(to_text_position(params.position))
             .map(|target| PrepareRenameResponse::RangeWithPlaceholder {
                 range: to_lsp_range(target.range()),
                 placeholder: target.placeholder().to_owned(),
-            })
+            }))
     } else {
-        None
-    };
-
-    let response = Response::new_ok(request.id.clone(), result);
-    connection
-        .sender
-        .send(Message::Response(response))
-        .context("failed to send prepareRename response")?;
-
-    Ok(())
+        Ok(None)
+    }
 }
 
 fn to_text_position(position: Position) -> syntax::TextPosition {
@@ -75,11 +62,25 @@ fn to_lsp_position(position: syntax::TextPosition) -> Position {
 mod test {
     use super::*;
     use indoc::indoc;
-    use lsp_server::RequestId;
+    use lsp_server::{Connection, Message, Request, RequestId, Response};
     use lsp_types::{
         TextDocumentIdentifier,
         request::{PrepareRenameRequest, Request as LspRequest},
     };
+
+    fn handle(
+        connection: &Connection,
+        request: &Request,
+        documents: &Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(request.params.clone())?;
+        let result = super::handle(documents, params)?;
+        connection.sender.send(Message::Response(Response::new_ok(
+            request.id.clone(),
+            result,
+        )))?;
+        Ok(())
+    }
 
     #[test]
     fn handle_prepare_rename_request() -> anyhow::Result<()> {

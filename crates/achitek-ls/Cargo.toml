@@ -19,6 +19,7 @@ path = "src/lib.rs"
 
 [dependencies]
 achitekfile = "0.2.0"
+terafile = { version = "0.1.1", path = "../terafile" }
 anyhow = "1.0.102"
 lexopt = "0.3.2"
 lsp-server = "0.7.9"

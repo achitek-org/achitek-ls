@@ -1,29 +1,22 @@
-//! Analysis
-use crate::syntax::{self, ParseError, SyntaxErrorKind, SyntaxTree, TextPosition, TextRange};
+//! Editor features for Achitekfile documents.
+//!
+//! This module is an LSP-facing adapter for editor interactions that have not
+//! yet moved into the `achitekfile` crate. Diagnostics intentionally live in
+//! the language crates and are converted to LSP diagnostics by `crate::lsp`.
+use crate::syntax::{self, ParseError, SyntaxTree, TextPosition, TextRange};
 use tree_sitter::Node;
 
-/// Analysis result for a single Achitek document.
+/// Editor-facing model for a single Achitekfile document.
 #[derive(Debug)]
-pub struct Analysis {
+pub struct DocumentModel {
     syntax: SyntaxTree,
-    diagnostics: Vec<Diagnostic>,
     symbols: Vec<Symbol>,
 }
 
-impl Analysis {
-    /// Returns the parsed syntax tree for the analyzed document.
+impl DocumentModel {
+    /// Returns the parsed syntax tree for the document.
     pub fn syntax(&self) -> &SyntaxTree {
         &self.syntax
-    }
-
-    /// Returns diagnostics produced during analysis.
-    pub fn diagnostics(&self) -> &[Diagnostic] {
-        &self.diagnostics
-    }
-
-    /// Returns true when analysis produced any diagnostics.
-    pub fn has_diagnostics(&self) -> bool {
-        !self.diagnostics.is_empty()
     }
 
     /// Returns document symbols derived from the parsed source.
@@ -31,22 +24,22 @@ impl Analysis {
         &self.symbols
     }
 
-    /// Returns hover information for a position in the analyzed document.
+    /// Returns hover information for a position in the document.
     pub fn hover(&self, position: TextPosition) -> Option<Hover> {
         hover_for_position(&self.syntax, position)
     }
 
-    /// Returns completion items for a position in the analyzed document.
+    /// Returns completion items for a position in the document.
     pub fn completions(&self, position: TextPosition) -> Vec<Completion> {
         completions_for_position(&self.syntax, &self.symbols, position)
     }
 
-    /// Returns the definition target for a position in the analyzed document.
+    /// Returns the definition target for a position in the document.
     pub fn definition(&self, position: TextPosition) -> Option<DefinitionTarget> {
         definition_for_position(&self.syntax, &self.symbols, position)
     }
 
-    /// Returns rename preparation details for a position in the analyzed document.
+    /// Returns rename preparation details for a position in the document.
     pub fn prepare_rename(&self, position: TextPosition) -> Option<PrepareRenameTarget> {
         prepare_rename_for_position(&self.syntax, &self.symbols, position)
     }
@@ -63,69 +56,6 @@ impl Analysis {
     /// Returns the prompt name associated with the symbol under the cursor.
     pub fn prompt_name(&self, position: TextPosition) -> Option<&str> {
         symbol_name_at_position(&self.syntax, position, &self.symbols)
-    }
-}
-
-/// A diagnostic that can later be mapped into an LSP diagnostic.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Diagnostic {
-    severity: Severity,
-    message: String,
-    range: TextRange,
-    related_information: Vec<RelatedInformation>,
-}
-
-impl Diagnostic {
-    /// Returns the severity of the diagnostic.
-    pub fn severity(&self) -> Severity {
-        self.severity
-    }
-
-    /// Returns the human-readable diagnostic message.
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-
-    /// Returns the source range associated with the diagnostic.
-    pub fn range(&self) -> TextRange {
-        self.range
-    }
-
-    /// Returns related locations that help explain the diagnostic.
-    pub fn related_information(&self) -> &[RelatedInformation] {
-        &self.related_information
-    }
-}
-
-/// Diagnostic severity understood by the analysis layer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Severity {
-    /// A hard error that should surface prominently in the editor.
-    Error,
-    /// A warning about suspicious but not necessarily invalid input.
-    Warning,
-    /// Informational feedback that may help the user understand the document.
-    Information,
-    /// Low-priority guidance or supporting context for another diagnostic.
-    Hint,
-}
-
-/// Extra source information attached to a diagnostic.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RelatedInformation {
-    message: String,
-    range: TextRange,
-}
-
-impl RelatedInformation {
-    /// Returns the related-information message.
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-
-    /// Returns the related-information source range.
-    pub fn range(&self) -> TextRange {
-        self.range
     }
 }
 
@@ -267,7 +197,7 @@ impl Symbol {
     }
 }
 
-/// Symbol kinds understood by the analysis layer.
+/// Symbol kinds understood by editor features.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolKind {
     /// The top-level blueprint block.
@@ -278,7 +208,7 @@ pub enum SymbolKind {
     Validate,
 }
 
-/// Completion kinds understood by the analysis layer.
+/// Completion kinds understood by editor features.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompletionKind {
     /// A language keyword or DSL construct.
@@ -293,451 +223,12 @@ pub enum CompletionKind {
     Function,
 }
 
-/// Analyzes a single Achitek source document.
-///
-/// The current implementation parses the source and converts syntax-layer
-/// errors into analysis diagnostics. Semantic checks can be added here later
-/// without changing the API shape.
-pub fn analyze(source: &str) -> Result<Analysis, ParseError> {
+/// Builds editor features for a single Achitek source document.
+pub fn build(source: &str) -> Result<DocumentModel, ParseError> {
     let syntax = syntax::parse(source)?;
-    let mut diagnostics: Vec<Diagnostic> = syntax
-        .errors()
-        .iter()
-        .map(|error| Diagnostic {
-            severity: Severity::Error,
-            message: syntax_error_message(error.kind()).to_owned(),
-            range: error.range(),
-            related_information: Vec::new(),
-        })
-        .collect();
     let symbols = collect_symbols(&syntax);
-    diagnostics.extend(semantic_diagnostics(&syntax, &symbols));
 
-    Ok(Analysis {
-        syntax,
-        diagnostics,
-        symbols,
-    })
-}
-
-fn syntax_error_message(kind: SyntaxErrorKind) -> &'static str {
-    match kind {
-        SyntaxErrorKind::Missing => "missing syntax required to complete this construct",
-        SyntaxErrorKind::Unexpected => "unexpected syntax",
-    }
-}
-
-fn semantic_diagnostics(syntax: &SyntaxTree, symbols: &[Symbol]) -> Vec<Diagnostic> {
-    let mut diagnostics = duplicate_prompt_diagnostics(symbols);
-    diagnostics.extend(undefined_reference_diagnostics(syntax, symbols));
-    diagnostics.extend(prompt_validation_diagnostics(syntax));
-    diagnostics
-}
-
-fn duplicate_prompt_diagnostics(symbols: &[Symbol]) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
-
-    for (index, symbol) in symbols.iter().enumerate() {
-        if symbol.kind() != SymbolKind::Prompt {
-            continue;
-        }
-
-        if let Some(first) = symbols[..index]
-            .iter()
-            .find(|other| other.kind() == SymbolKind::Prompt && other.name() == symbol.name())
-        {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Hint,
-                message: format!("previous definition of prompt `{}` here", symbol.name()),
-                range: first.selection_range(),
-                related_information: vec![RelatedInformation {
-                    message: "duplicate prompt declared here".to_owned(),
-                    range: symbol.selection_range(),
-                }],
-            });
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                message: format!(
-                    "duplicate prompt `{}`; first defined at line {}",
-                    symbol.name(),
-                    first.selection_range().start_position.row + 1
-                ),
-                range: symbol.selection_range(),
-                related_information: vec![RelatedInformation {
-                    message: format!("first defined here as `{}`", symbol.name()),
-                    range: first.selection_range(),
-                }],
-            });
-        }
-    }
-
-    diagnostics
-}
-
-fn undefined_reference_diagnostics(syntax: &SyntaxTree, symbols: &[Symbol]) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
-    collect_undefined_reference_diagnostics(syntax.root_node(), syntax, symbols, &mut diagnostics);
-    diagnostics
-}
-
-fn prompt_validation_diagnostics(syntax: &SyntaxTree) -> Vec<Diagnostic> {
-    let root = syntax.root_node();
-    let mut diagnostics = Vec::new();
-
-    for index in 0..root.child_count() {
-        let Some(child) =
-            root.child(u32::try_from(index).expect("child index should fit into u32"))
-        else {
-            continue;
-        };
-
-        if child.kind() == "prompt_block" {
-            diagnostics.extend(validate_prompt_block(syntax, child));
-        }
-    }
-
-    diagnostics
-}
-
-fn validate_prompt_block(syntax: &SyntaxTree, prompt_block: Node<'_>) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
-    let name_node = prompt_block
-        .child_by_field_name("name")
-        .expect("prompt_block should have a name field");
-    let prompt_name = syntax.text_for(name_node).trim_matches('"');
-    let prompt_range = syntax.range_for(name_node);
-
-    let prompt_type = prompt_type_for_block(syntax, prompt_block);
-    let choices_attribute = attribute_in_prompt_block(prompt_block, "choices_attribute");
-    let default_attribute = attribute_in_prompt_block(prompt_block, "default_attribute");
-    let validate_block = child_block(prompt_block, "validate_block");
-    let min_length_attribute =
-        validate_block.and_then(|block| attribute_in_validate_block(block, "min_length_attribute"));
-    let max_length_attribute =
-        validate_block.and_then(|block| attribute_in_validate_block(block, "max_length_attribute"));
-    let min_selections_attribute = validate_block
-        .and_then(|block| attribute_in_validate_block(block, "min_selections_attribute"));
-    let max_selections_attribute = validate_block
-        .and_then(|block| attribute_in_validate_block(block, "max_selections_attribute"));
-
-    if prompt_type.is_none() {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Error,
-            message: format!("prompt `{prompt_name}` is missing required `type`"),
-            range: prompt_range,
-            related_information: Vec::new(),
-        });
-    }
-
-    match prompt_type {
-        Some("select") | Some("multiselect") => {
-            if choices_attribute.is_none() {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    message: format!(
-                        "prompt `{prompt_name}` of type `{}` requires `choices`",
-                        prompt_type.unwrap_or("unknown")
-                    ),
-                    range: prompt_range,
-                    related_information: Vec::new(),
-                });
-            }
-            if let Some(attribute) = choices_attribute
-                && choices_for_attribute(syntax, attribute).is_empty()
-            {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    message: "`choices` must contain at least one value".to_owned(),
-                    range: syntax.range_for(attribute),
-                    related_information: Vec::new(),
-                });
-            }
-        }
-        Some(other_type) => {
-            if let Some(attribute) = choices_attribute {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    message: format!(
-                        "`choices` is only valid for `select` and `multiselect` prompts, not `{other_type}`"
-                    ),
-                    range: syntax.range_for(attribute),
-                    related_information: Vec::new(),
-                });
-            }
-        }
-        None => {}
-    }
-
-    if let (Some(prompt_type), Some(attribute)) = (prompt_type, default_attribute) {
-        diagnostics.extend(validate_default_attribute(
-            syntax,
-            attribute,
-            prompt_type,
-            choices_attribute,
-        ));
-    }
-
-    let allows_length_rules = matches!(prompt_type, Some("string" | "paragraph"));
-    for attribute in [min_length_attribute, max_length_attribute]
-        .into_iter()
-        .flatten()
-    {
-        if !allows_length_rules {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                message: format!(
-                    "`{}` is only valid for `string` and `paragraph` prompts",
-                    attribute.kind().trim_end_matches("_attribute")
-                ),
-                range: syntax.range_for(attribute),
-                related_information: Vec::new(),
-            });
-        }
-    }
-
-    if let (Some(min), Some(max)) = (
-        min_length_attribute.and_then(|attribute| integer_attribute_value(syntax, attribute)),
-        max_length_attribute.and_then(|attribute| integer_attribute_value(syntax, attribute)),
-    ) && min.value > max.value
-    {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Error,
-            message: "`min_length` must be less than or equal to `max_length`".to_owned(),
-            range: min.range,
-            related_information: vec![RelatedInformation {
-                message: "`max_length` is declared here".to_owned(),
-                range: max.range,
-            }],
-        });
-    }
-
-    let allows_selection_rules = matches!(prompt_type, Some("multiselect"));
-    for attribute in [min_selections_attribute, max_selections_attribute]
-        .into_iter()
-        .flatten()
-    {
-        if !allows_selection_rules {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                message: format!(
-                    "`{}` is only valid for `multiselect` prompts",
-                    attribute.kind().trim_end_matches("_attribute")
-                ),
-                range: syntax.range_for(attribute),
-                related_information: Vec::new(),
-            });
-        }
-    }
-
-    if let (Some(min), Some(max)) = (
-        min_selections_attribute.and_then(|attribute| integer_attribute_value(syntax, attribute)),
-        max_selections_attribute.and_then(|attribute| integer_attribute_value(syntax, attribute)),
-    ) && min.value > max.value
-    {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Error,
-            message: "`min_selections` must be less than or equal to `max_selections`".to_owned(),
-            range: min.range,
-            related_information: vec![RelatedInformation {
-                message: "`max_selections` is declared here".to_owned(),
-                range: max.range,
-            }],
-        });
-    }
-
-    diagnostics
-}
-
-#[derive(Debug, Clone, Copy)]
-struct IntegerValue {
-    value: u64,
-    range: TextRange,
-}
-
-fn validate_default_attribute(
-    syntax: &SyntaxTree,
-    attribute: Node<'_>,
-    prompt_type: &str,
-    choices_attribute: Option<Node<'_>>,
-) -> Vec<Diagnostic> {
-    let Some(value) = attribute.child_by_field_name("value") else {
-        return Vec::new();
-    };
-    let value = unwrap_value_node(value);
-    let value_text = syntax.text_for(value);
-    let value_range = syntax.range_for(value);
-    let mut diagnostics = Vec::new();
-
-    match prompt_type {
-        "string" | "paragraph" => {
-            if value.kind() != "string_literal" {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    message: format!("default for `{prompt_type}` prompts must be a string"),
-                    range: value_range,
-                    related_information: Vec::new(),
-                });
-            }
-        }
-        "bool" => {
-            if value.kind() != "boolean" {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    message: "default for `bool` prompts must be `true` or `false`".to_owned(),
-                    range: value_range,
-                    related_information: Vec::new(),
-                });
-            }
-        }
-        "select" => {
-            if value.kind() != "string_literal" {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    message: "default for `select` prompts must be one choice string".to_owned(),
-                    range: value_range,
-                    related_information: Vec::new(),
-                });
-            } else if let Some(choices_attribute) = choices_attribute {
-                let choices = choices_for_attribute(syntax, choices_attribute);
-                let default = unquote(value_text);
-                if !choices.iter().any(|choice| choice == default) {
-                    diagnostics.push(Diagnostic {
-                        severity: Severity::Error,
-                        message: format!("default `{default}` is not listed in `choices`"),
-                        range: value_range,
-                        related_information: Vec::new(),
-                    });
-                }
-            }
-        }
-        "multiselect" => {
-            if value.kind() != "array" {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    message: "default for `multiselect` prompts must be an array".to_owned(),
-                    range: value_range,
-                    related_information: Vec::new(),
-                });
-            } else if let Some(choices_attribute) = choices_attribute {
-                let choices = choices_for_attribute(syntax, choices_attribute);
-                for item in string_values_in_array(syntax, value) {
-                    if !choices.iter().any(|choice| choice == &item.value) {
-                        diagnostics.push(Diagnostic {
-                            severity: Severity::Error,
-                            message: format!(
-                                "default choice `{}` is not listed in `choices`",
-                                item.value
-                            ),
-                            range: item.range,
-                            related_information: Vec::new(),
-                        });
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
-
-    diagnostics
-}
-
-#[derive(Debug, Clone)]
-struct StringValue {
-    value: String,
-    range: TextRange,
-}
-
-fn choices_for_attribute(syntax: &SyntaxTree, attribute: Node<'_>) -> Vec<String> {
-    let Some(value) = attribute.child_by_field_name("value") else {
-        return Vec::new();
-    };
-    string_values_in_array(syntax, unwrap_value_node(value))
-        .into_iter()
-        .map(|value| value.value)
-        .collect()
-}
-
-fn unwrap_value_node(mut node: Node<'_>) -> Node<'_> {
-    while matches!(node.kind(), "value" | "literal_value") {
-        let Some(child) = first_named_child(node) else {
-            break;
-        };
-        node = child;
-    }
-    node
-}
-
-fn first_named_child(node: Node<'_>) -> Option<Node<'_>> {
-    for index in 0..node.named_child_count() {
-        let Some(child) =
-            node.named_child(u32::try_from(index).expect("child index should fit into u32"))
-        else {
-            continue;
-        };
-        return Some(child);
-    }
-    None
-}
-
-fn string_values_in_array(syntax: &SyntaxTree, array: Node<'_>) -> Vec<StringValue> {
-    let mut values = Vec::new();
-    collect_string_values(array, syntax, &mut values);
-    values
-}
-
-fn collect_string_values(node: Node<'_>, syntax: &SyntaxTree, values: &mut Vec<StringValue>) {
-    if node.kind() == "string_literal" {
-        values.push(StringValue {
-            value: unquote(syntax.text_for(node)).to_owned(),
-            range: syntax.range_for(node),
-        });
-    }
-
-    for index in 0..node.child_count() {
-        let Some(child) =
-            node.child(u32::try_from(index).expect("child index should fit into u32"))
-        else {
-            continue;
-        };
-        collect_string_values(child, syntax, values);
-    }
-}
-
-fn integer_attribute_value(syntax: &SyntaxTree, attribute: Node<'_>) -> Option<IntegerValue> {
-    let value = attribute.child_by_field_name("value")?;
-    Some(IntegerValue {
-        value: syntax.text_for(value).parse().ok()?,
-        range: syntax.range_for(value),
-    })
-}
-
-fn unquote(value: &str) -> &str {
-    value
-        .strip_prefix('"')
-        .and_then(|value| value.strip_suffix('"'))
-        .unwrap_or(value)
-}
-
-fn child_block<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
-    for index in 0..node.child_count() {
-        let Some(child) =
-            node.child(u32::try_from(index).expect("child index should fit into u32"))
-        else {
-            continue;
-        };
-        if child.kind() == kind {
-            return Some(child);
-        }
-    }
-    None
-}
-
-fn attribute_in_prompt_block<'a>(prompt_block: Node<'a>, kind: &str) -> Option<Node<'a>> {
-    find_named_descendant_by_kind(prompt_block, kind)
-}
-
-fn attribute_in_validate_block<'a>(validate_block: Node<'a>, kind: &str) -> Option<Node<'a>> {
-    find_named_descendant_by_kind(validate_block, kind)
+    Ok(DocumentModel { syntax, symbols })
 }
 
 fn find_named_descendant_by_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
@@ -757,36 +248,6 @@ fn find_named_descendant_by_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<
     }
 
     None
-}
-
-fn collect_undefined_reference_diagnostics(
-    node: Node<'_>,
-    syntax: &SyntaxTree,
-    symbols: &[Symbol],
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    if node.kind() == "identifier"
-        && let Some(name) = identifier_reference_name(syntax, node)
-        && !symbols
-            .iter()
-            .any(|symbol| symbol.kind() == SymbolKind::Prompt && symbol.name() == name)
-    {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Error,
-            message: format!("undefined prompt reference `{name}`"),
-            range: syntax.range_for(node),
-            related_information: Vec::new(),
-        });
-    }
-
-    for index in 0..node.child_count() {
-        let Some(child) =
-            node.child(u32::try_from(index).expect("child index should fit into u32"))
-        else {
-            continue;
-        };
-        collect_undefined_reference_diagnostics(child, syntax, symbols, diagnostics);
-    }
 }
 
 fn definition_for_position(
@@ -1534,406 +995,6 @@ mod tests {
     use indoc::indoc;
 
     #[test]
-    fn analyzes_valid_source_without_diagnostics() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "minimal"
-            }
-
-            prompt "project_name" {
-              type = string
-              help = "Project name"
-            }
-        "#};
-
-        let analysis = analyze(source).expect("valid source should analyze");
-
-        assert_eq!(analysis.syntax().root_node().kind(), "file");
-        assert!(!analysis.has_diagnostics());
-        assert!(analysis.diagnostics().is_empty());
-    }
-
-    #[test]
-    fn surfaces_syntax_diagnostics_for_invalid_source() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "broken"
-
-            prompt "project_name" {
-              type = string
-            }
-        "#};
-
-        let analysis = analyze(source).expect("invalid source should still analyze");
-
-        assert!(analysis.has_diagnostics());
-        assert!(
-            analysis
-                .diagnostics()
-                .iter()
-                .all(|diagnostic| diagnostic.severity() == Severity::Error)
-        );
-        assert!(
-            analysis
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| !diagnostic.message().is_empty())
-        );
-    }
-
-    #[test]
-    fn reports_duplicate_prompt_names() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "minimal"
-            }
-
-            prompt "project_name" {
-              type = string
-            }
-
-            prompt "project_name" {
-              type = string
-            }
-        "#};
-
-        let analysis = analyze(source).expect("valid source should analyze");
-        let diagnostics = analysis.diagnostics();
-
-        let duplicate = diagnostics
-            .iter()
-            .find(|diagnostic| diagnostic.message().contains("duplicate prompt"))
-            .expect("expected duplicate diagnostic");
-        let original = diagnostics
-            .iter()
-            .find(|diagnostic| {
-                diagnostic
-                    .message()
-                    .contains("previous definition of prompt")
-            })
-            .expect("expected original-location diagnostic");
-        assert_eq!(
-            duplicate.message(),
-            "duplicate prompt `project_name`; first defined at line 6"
-        );
-        assert_eq!(
-            original.message(),
-            "previous definition of prompt `project_name` here"
-        );
-        assert_eq!(original.severity(), Severity::Hint);
-        assert_eq!(original.range().start_position.row, 5);
-        assert_eq!(original.related_information().len(), 1);
-        assert_eq!(
-            original.related_information()[0].message(),
-            "duplicate prompt declared here"
-        );
-        assert_eq!(
-            original.related_information()[0].range().start_position.row,
-            9
-        );
-        assert_eq!(duplicate.related_information().len(), 1);
-        assert_eq!(
-            duplicate.related_information()[0].message(),
-            "first defined here as `project_name`"
-        );
-        assert_eq!(
-            duplicate.related_information()[0]
-                .range()
-                .start_position
-                .row,
-            5
-        );
-    }
-
-    #[test]
-    fn reports_undefined_prompt_references() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "minimal"
-            }
-
-            prompt "kind" {
-              type = string
-              depends_on = missing_prompt
-            }
-        "#};
-
-        let analysis = analyze(source).expect("valid source should analyze");
-        let diagnostics = analysis.diagnostics();
-
-        assert!(diagnostics.iter().any(
-            |diagnostic| diagnostic.message() == "undefined prompt reference `missing_prompt`"
-        ));
-    }
-
-    #[test]
-    fn reports_missing_prompt_type() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "minimal"
-            }
-
-            prompt "project_name" {
-              help = "Project name"
-            }
-        "#};
-
-        let analysis = analyze(source).expect("valid source should analyze");
-        assert!(
-            analysis
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| diagnostic.message()
-                    == "prompt `project_name` is missing required `type`")
-        );
-    }
-
-    #[test]
-    fn reports_missing_choices_for_select_prompt() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "minimal"
-            }
-
-            prompt "kind" {
-              type = select
-            }
-        "#};
-
-        let analysis = analyze(source).expect("valid source should analyze");
-        assert!(
-            analysis
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| diagnostic.message()
-                    == "prompt `kind` of type `select` requires `choices`")
-        );
-    }
-
-    #[test]
-    fn reports_choices_on_non_select_prompt() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "minimal"
-            }
-
-            prompt "project_name" {
-              type = string
-              choices = ["a", "b"]
-            }
-        "#};
-
-        let analysis = analyze(source).expect("valid source should analyze");
-        assert!(analysis.diagnostics().iter().any(
-            |diagnostic| diagnostic.message()
-                == "`choices` is only valid for `select` and `multiselect` prompts, not `string`"
-        ));
-    }
-
-    #[test]
-    fn reports_string_length_rules_on_non_string_prompt() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "minimal"
-            }
-
-            prompt "enabled" {
-              type = bool
-
-              validate {
-                min_length = 2
-              }
-            }
-        "#};
-
-        let analysis = analyze(source).expect("valid source should analyze");
-        assert!(
-            analysis
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| diagnostic.message()
-                    == "`min_length` is only valid for `string` and `paragraph` prompts")
-        );
-    }
-
-    #[test]
-    fn reports_selection_rules_on_non_multiselect_prompt() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "minimal"
-            }
-
-            prompt "kind" {
-              type = select
-              choices = ["a", "b"]
-
-              validate {
-                min_selections = 1
-              }
-            }
-        "#};
-
-        let analysis = analyze(source).expect("valid source should analyze");
-        assert!(
-            analysis
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| diagnostic.message()
-                    == "`min_selections` is only valid for `multiselect` prompts")
-        );
-    }
-
-    #[test]
-    fn reports_default_value_type_mismatches() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "minimal"
-            }
-
-            prompt "enabled" {
-              type = bool
-              default = "yes"
-            }
-        "#};
-
-        let analysis = analyze(source).expect("valid source should analyze");
-        assert!(
-            analysis
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| diagnostic.message()
-                    == "default for `bool` prompts must be `true` or `false`")
-        );
-    }
-
-    #[test]
-    fn reports_select_default_not_in_choices() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "minimal"
-            }
-
-            prompt "kind" {
-              type = select
-              choices = ["bin", "lib"]
-              default = "cli"
-            }
-        "#};
-
-        let analysis = analyze(source).expect("valid source should analyze");
-        assert!(
-            analysis.diagnostics().iter().any(
-                |diagnostic| diagnostic.message() == "default `cli` is not listed in `choices`"
-            )
-        );
-    }
-
-    #[test]
-    fn reports_multiselect_default_not_in_choices() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "minimal"
-            }
-
-            prompt "features" {
-              type = multiselect
-              choices = ["serde", "tokio"]
-              default = ["serde", "tracing"]
-            }
-        "#};
-
-        let analysis = analyze(source).expect("valid source should analyze");
-        assert!(
-            analysis
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| diagnostic.message()
-                    == "default choice `tracing` is not listed in `choices`")
-        );
-    }
-
-    #[test]
-    fn reports_empty_choices() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "minimal"
-            }
-
-            prompt "kind" {
-              type = select
-              choices = []
-            }
-        "#};
-
-        let analysis = analyze(source).expect("valid source should analyze");
-        assert!(
-            analysis
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| diagnostic.message()
-                    == "`choices` must contain at least one value")
-        );
-    }
-
-    #[test]
-    fn reports_invalid_validation_ranges() {
-        let source = indoc! {r#"
-            blueprint {
-              version = "1.0.0"
-              name = "minimal"
-            }
-
-            prompt "name" {
-              type = string
-
-              validate {
-                min_length = 10
-                max_length = 2
-              }
-            }
-
-            prompt "features" {
-              type = multiselect
-              choices = ["serde", "tokio"]
-
-              validate {
-                min_selections = 3
-                max_selections = 1
-              }
-            }
-        "#};
-
-        let analysis = analyze(source).expect("valid source should analyze");
-        assert!(
-            analysis
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| diagnostic.message()
-                    == "`min_length` must be less than or equal to `max_length`")
-        );
-        assert!(
-            analysis
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| diagnostic.message()
-                    == "`min_selections` must be less than or equal to `max_selections`")
-        );
-    }
-
-    #[test]
     fn filters_prompt_attribute_completions_by_type_and_existing_attributes() {
         let source = indoc! {r#"
             blueprint {
@@ -1947,7 +1008,7 @@ mod tests {
             }
         "#};
 
-        let analysis = analyze(source).expect("valid source should analyze");
+        let analysis = build(source).expect("valid source should build");
         let completions = analysis.completions(TextPosition { row: 7, column: 2 });
 
         assert!(!completions.iter().any(|item| item.label() == "type"));
@@ -1973,7 +1034,7 @@ mod tests {
             }
         "#};
 
-        let analysis = analyze(source).expect("valid source should analyze");
+        let analysis = build(source).expect("valid source should build");
         let completions = analysis.completions(TextPosition { row: 10, column: 4 });
 
         assert!(
@@ -2002,7 +1063,7 @@ mod tests {
             }
         "#};
 
-        let analysis = analyze(source).expect("valid source should analyze");
+        let analysis = build(source).expect("valid source should build");
 
         assert_eq!(analysis.symbols().len(), 2);
         assert_eq!(analysis.symbols()[0].name(), "blueprint");
@@ -2031,7 +1092,7 @@ mod tests {
             }
         "#};
 
-        let analysis = analyze(source).expect("valid source should analyze");
+        let analysis = build(source).expect("valid source should build");
         let hover = analysis
             .hover(TextPosition { row: 6, column: 9 })
             .expect("hover should exist for prompt type");
@@ -2053,7 +1114,7 @@ mod tests {
             }
         "#};
 
-        let analysis = analyze(source).expect("valid source should analyze");
+        let analysis = build(source).expect("valid source should build");
         let completions = analysis.completions(TextPosition { row: 6, column: 9 });
 
         assert!(completions.iter().any(|item| item.label() == "string"));
@@ -2080,7 +1141,7 @@ mod tests {
             }
         "#};
 
-        let analysis = analyze(source).expect("valid source should analyze");
+        let analysis = build(source).expect("valid source should build");
         let completions = analysis.completions(TextPosition {
             row: 13,
             column: 15,
@@ -2114,7 +1175,7 @@ mod tests {
             }
         "#};
 
-        let analysis = analyze(source).expect("valid source should analyze");
+        let analysis = build(source).expect("valid source should build");
         let definition = analysis
             .definition(TextPosition {
                 row: 13,
@@ -2146,7 +1207,7 @@ mod tests {
             }
         "#};
 
-        let analysis = analyze(source).expect("valid source should analyze");
+        let analysis = build(source).expect("valid source should build");
         let references = analysis.references(TextPosition { row: 5, column: 9 }, true);
 
         assert_eq!(references.len(), 2);
@@ -2167,7 +1228,7 @@ mod tests {
             }
         "#};
 
-        let analysis = analyze(source).expect("valid source should analyze");
+        let analysis = build(source).expect("valid source should build");
         let target = analysis
             .prepare_rename(TextPosition { row: 5, column: 10 })
             .expect("prepare rename should exist for prompt definition");
@@ -2195,7 +1256,7 @@ mod tests {
             }
         "#};
 
-        let analysis = analyze(source).expect("valid source should analyze");
+        let analysis = build(source).expect("valid source should build");
         let target = analysis
             .prepare_rename(TextPosition {
                 row: 11,

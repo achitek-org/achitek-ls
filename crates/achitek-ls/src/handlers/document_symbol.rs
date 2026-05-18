@@ -11,9 +11,8 @@
 //! nested `validate` blocks.
 #[cfg(test)]
 use crate::server::Document;
-use crate::{analysis, server::Documents, syntax};
+use crate::{editor, server::Documents, syntax};
 use anyhow::Context;
-use lsp_server::{Connection, Message, Request, Response};
 #[cfg(test)]
 use lsp_types::Uri;
 use lsp_types::{
@@ -29,13 +28,11 @@ use lsp_types::{
 /// returns `null`, which tells the client there are no symbols available for
 /// that request.
 pub fn handle(
-    connection: &Connection,
-    request: &Request,
     in_memory_document: &Documents,
-) -> anyhow::Result<()> {
-    let params: DocumentSymbolParams = serde_json::from_value(request.params.clone())?;
-    let result = if let Some(document) = in_memory_document.get(params.text_document.uri.as_str()) {
-        let analysis = analysis::analyze(&document.text).with_context(|| {
+    params: DocumentSymbolParams,
+) -> anyhow::Result<Option<DocumentSymbolResponse>> {
+    if let Some(document) = in_memory_document.get(params.text_document.uri.as_str()) {
+        let analysis = editor::build(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
                 params.text_document.uri
@@ -47,30 +44,22 @@ pub fn handle(
             .map(to_lsp_document_symbol)
             .collect::<Vec<_>>();
 
-        Some(DocumentSymbolResponse::Nested(symbols))
+        Ok(Some(DocumentSymbolResponse::Nested(symbols)))
     } else {
-        None
-    };
-    let response = Response::new_ok(request.id.clone(), result);
-
-    connection
-        .sender
-        .send(Message::Response(response))
-        .context("failed to send documentSymbol response")?;
-
-    Ok(())
+        Ok(None)
+    }
 }
 
-/// Converts an analysis symbol into the nested LSP document-symbol shape.
+/// Converts an editor symbol into the nested LSP document-symbol shape.
 #[allow(deprecated)]
-fn to_lsp_document_symbol(symbol: &analysis::Symbol) -> DocumentSymbol {
+fn to_lsp_document_symbol(symbol: &editor::Symbol) -> DocumentSymbol {
     DocumentSymbol {
         name: symbol.name().to_owned(),
         detail: symbol.detail().map(str::to_owned),
         kind: match symbol.kind() {
-            analysis::SymbolKind::Blueprint => LspSymbolKind::MODULE,
-            analysis::SymbolKind::Prompt => LspSymbolKind::FIELD,
-            analysis::SymbolKind::Validate => LspSymbolKind::OBJECT,
+            editor::SymbolKind::Blueprint => LspSymbolKind::MODULE,
+            editor::SymbolKind::Prompt => LspSymbolKind::FIELD,
+            editor::SymbolKind::Validate => LspSymbolKind::OBJECT,
         },
         tags: None,
         deprecated: None,
@@ -86,7 +75,7 @@ fn to_lsp_document_symbol(symbol: &analysis::Symbol) -> DocumentSymbol {
     }
 }
 
-/// Converts an analysis text range into an LSP range.
+/// Converts an editor text range into an LSP range.
 fn to_lsp_range(range: syntax::TextRange) -> Range {
     Range {
         start: to_lsp_position(range.start_position),
@@ -94,7 +83,7 @@ fn to_lsp_range(range: syntax::TextRange) -> Range {
     }
 }
 
-/// Converts a zero-based analysis text position into an LSP position.
+/// Converts a zero-based editor text position into an LSP position.
 fn to_lsp_position(position: syntax::TextPosition) -> Position {
     Position {
         line: u32::try_from(position.row).expect("line should fit into u32"),
@@ -106,11 +95,25 @@ fn to_lsp_position(position: syntax::TextPosition) -> Position {
 mod test {
     use super::*;
     use indoc::indoc;
-    use lsp_server::RequestId;
+    use lsp_server::{Connection, Message, Request, RequestId, Response};
     use lsp_types::{
         TextDocumentIdentifier,
         request::{DocumentSymbolRequest, Request as LspRequest},
     };
+
+    fn handle(
+        connection: &Connection,
+        request: &Request,
+        documents: &Documents,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::from_value(request.params.clone())?;
+        let result = super::handle(documents, params)?;
+        connection.sender.send(Message::Response(Response::new_ok(
+            request.id.clone(),
+            result,
+        )))?;
+        Ok(())
+    }
 
     #[test]
     fn handle_document_symbol_request() -> anyhow::Result<()> {
