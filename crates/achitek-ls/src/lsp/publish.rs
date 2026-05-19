@@ -4,10 +4,7 @@
 //! are produced by their language crates, then converted into LSP diagnostics
 //! here.
 
-use crate::{
-    server::{ServerState, utils},
-    workspace::DocumentKind,
-};
+use crate::{lsp::project_diagnostics, server::ServerState, workspace::DocumentKind};
 use anyhow::Context;
 use lsp_server::{Connection, Message, Notification};
 use lsp_types::{
@@ -20,7 +17,10 @@ pub fn publish(connection: &Connection, uri: &Uri, state: &ServerState) -> anyho
         return Ok(());
     };
 
-    let diagnostics = diagnostics_for_document(state.document_kind(uri), uri, &document.text)?;
+    let mut diagnostics = diagnostics_for_document(state.document_kind(uri), uri, &document.text)?;
+    if state.document_kind(uri) == DocumentKind::Achitekfile {
+        diagnostics.extend(project_diagnostics::achitekfile_diagnostics(uri, state)?);
+    }
     tracing::debug!(
         ?uri,
         version = document.version,
@@ -43,8 +43,7 @@ pub fn publish_templates(
     uri: &Uri,
     state: &ServerState,
 ) -> anyhow::Result<()> {
-    for (template_uri, diagnostics) in utils::diagnostics(uri, &state.documents, &state.workspace)?
-    {
+    for (template_uri, diagnostics) in project_diagnostics::template_diagnostics(uri, state)? {
         tracing::debug!(
             ?uri,
             ?template_uri,

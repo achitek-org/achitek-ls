@@ -19,6 +19,7 @@ pub(crate) struct ProjectContext<'a> {
     state: &'a ServerState,
     root: PathBuf,
     achitekfile: PathBuf,
+    achitekfile_uri: Option<Uri>,
 }
 
 impl<'a> ProjectContext<'a> {
@@ -26,7 +27,8 @@ impl<'a> ProjectContext<'a> {
     pub(crate) fn for_uri(state: &'a ServerState, uri: &Uri) -> Option<Self> {
         let path = utils::file_path_from_uri(uri)?;
         Self::for_path(state, &path).or_else(|| {
-            is_achitekfile_path(&path).then(|| Self::from_achitekfile_path(state, path))?
+            is_achitekfile_path(&path)
+                .then(|| Self::from_achitekfile_uri(state, path, uri.clone()))?
         })
     }
 
@@ -38,6 +40,11 @@ impl<'a> ProjectContext<'a> {
         })
     }
 
+    /// Returns the blueprint project root.
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
+    }
+
     /// Returns the Achitekfile path for this project.
     pub(crate) fn achitekfile_path(&self) -> &Path {
         &self.achitekfile
@@ -45,7 +52,11 @@ impl<'a> ProjectContext<'a> {
 
     /// Returns the Achitekfile URI for this project.
     pub(crate) fn achitekfile_uri(&self) -> anyhow::Result<Uri> {
-        utils::path_to_uri(&self.achitekfile)
+        if let Some(uri) = &self.achitekfile_uri {
+            Ok(uri.clone())
+        } else {
+            utils::path_to_uri(&self.achitekfile)
+        }
     }
 
     /// Returns Achitekfile source, preferring an open editor buffer over disk.
@@ -73,6 +84,7 @@ impl<'a> ProjectContext<'a> {
             state,
             root: project.root().to_path_buf(),
             achitekfile: project.achitekfile().to_path_buf(),
+            achitekfile_uri: None,
         })
     }
 
@@ -82,6 +94,21 @@ impl<'a> ProjectContext<'a> {
             state,
             root,
             achitekfile,
+            achitekfile_uri: None,
+        })
+    }
+
+    fn from_achitekfile_uri(
+        state: &'a ServerState,
+        achitekfile: PathBuf,
+        uri: Uri,
+    ) -> Option<Self> {
+        let root = achitekfile.parent()?.to_path_buf();
+        Some(Self {
+            state,
+            root,
+            achitekfile,
+            achitekfile_uri: Some(uri),
         })
     }
 
