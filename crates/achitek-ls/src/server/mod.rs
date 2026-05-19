@@ -7,6 +7,7 @@
 mod dispatch;
 mod event_loop;
 mod logging;
+pub(crate) mod project;
 mod state;
 pub mod utils;
 

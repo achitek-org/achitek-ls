@@ -11,17 +11,13 @@
 use crate::server::{Document, Documents};
 use crate::{
     editor,
-    server::{ServerState, utils},
+    server::{ServerState, project::ProjectContext, utils},
     syntax,
     workspace::DocumentKind,
 };
 use anyhow::Context;
 use lsp_types::{Position, Range, RenameParams, TextEdit, Uri, WorkspaceEdit};
-use std::{
-    collections::HashMap,
-    fs,
-    path::{Path, PathBuf},
-};
+use std::collections::HashMap;
 
 /// Handles a `textDocument/rename` request.
 #[allow(clippy::mutable_key_type)]
@@ -64,8 +60,8 @@ fn achitekfile_rename(
         new_name,
     );
 
-    if let Some(project_root) = project_root_for_uri(state, &uri) {
-        add_template_edits(&mut changes, &project_root, &prompt_name, new_name)?;
+    if let Some(project) = ProjectContext::for_uri(state, &uri) {
+        add_template_edits(&mut changes, &project, &prompt_name, new_name)?;
     }
 
     Ok(Some(WorkspaceEdit {
@@ -87,35 +83,24 @@ fn tera_rename(
         return Ok(None);
     };
 
-    let source = state
-        .documents
-        .get(uri.as_str())
-        .map(|document| Ok(document.text.clone()))
-        .unwrap_or_else(|| {
-            fs::read_to_string(&template_path)
-                .with_context(|| format!("failed to read template `{}`", template_path.display()))
-        })?;
+    let Some(project) = ProjectContext::for_template_path(state, &template_path) else {
+        tracing::debug!(?uri, "template rename skipped because no project was found");
+        return Ok(None);
+    };
+    let source = project.template_source(&uri, &template_path)?;
     let Some(prompt_name) = utils::reference_at_position(&source, position) else {
         tracing::debug!(?uri, ?position, "no template reference under cursor");
         return Ok(None);
     };
 
-    let Some(achitek_path) = achitekfile_for_template(state, &template_path) else {
-        tracing::debug!(
-            ?uri,
-            reference = prompt_name,
-            "template rename skipped because no achitekfile was found"
-        );
-        return Ok(None);
-    };
-    let achitek_uri = utils::path_to_uri(&achitek_path)?;
-    let achitek_source = state
-        .documents
-        .get(achitek_uri.as_str())
-        .map(|document| document.text.clone())
-        .unwrap_or_else(|| fs::read_to_string(&achitek_path).unwrap_or_default());
-    let analysis = editor::build(&achitek_source)
-        .with_context(|| format!("failed to analyze `{}`", achitek_path.display()))?;
+    let achitek_uri = project.achitekfile_uri()?;
+    let achitek_source = project.achitekfile_source()?;
+    let analysis = editor::build(&achitek_source).with_context(|| {
+        format!(
+            "failed to analyze `{}`",
+            project.achitekfile_path().display()
+        )
+    })?;
     let Some(symbol) = analysis
         .symbols()
         .iter()
@@ -140,9 +125,7 @@ fn tera_rename(
         new_name,
     );
 
-    if let Some(project_root) = project_root_for_template(state, &template_path) {
-        add_template_edits(&mut changes, &project_root, &prompt_name, new_name)?;
-    }
+    add_template_edits(&mut changes, &project, &prompt_name, new_name)?;
 
     Ok(Some(WorkspaceEdit {
         changes: Some(changes),
@@ -173,16 +156,15 @@ fn add_achitekfile_edits(
 #[allow(clippy::mutable_key_type)]
 fn add_template_edits(
     changes: &mut HashMap<Uri, Vec<TextEdit>>,
-    project_root: &Path,
+    project: &ProjectContext<'_>,
     prompt_name: &str,
     new_name: &str,
 ) -> anyhow::Result<()> {
-    for location in utils::scan_references(project_root, prompt_name)? {
+    for location in project.scan_template_references(prompt_name)? {
         let Some(path) = utils::file_path_from_uri(&location.uri) else {
             continue;
         };
-        let source = fs::read_to_string(&path)
-            .with_context(|| format!("failed to read template for rename `{}`", path.display()))?;
+        let source = project.template_source(&location.uri, &path)?;
         let replacement = replacement_text_for_range(&source, &location.range, new_name);
         changes.entry(location.uri).or_default().push(TextEdit {
             range: location.range,
@@ -191,33 +173,6 @@ fn add_template_edits(
     }
 
     Ok(())
-}
-
-fn project_root_for_uri(state: &ServerState, uri: &Uri) -> Option<PathBuf> {
-    state
-        .workspace
-        .project_for_uri(uri)
-        .map(|project| project.root().to_path_buf())
-        .or_else(|| utils::blueprint_dir_from_uri(uri))
-}
-
-fn project_root_for_template(state: &ServerState, template_path: &Path) -> Option<PathBuf> {
-    state
-        .workspace
-        .project_for_path(template_path)
-        .map(|project| project.root().to_path_buf())
-        .or_else(|| {
-            utils::find_achitekfile_for_template(template_path)
-                .and_then(|path| path.parent().map(Path::to_path_buf))
-        })
-}
-
-fn achitekfile_for_template(state: &ServerState, template_path: &Path) -> Option<PathBuf> {
-    state
-        .workspace
-        .project_for_path(template_path)
-        .map(|project| project.achitekfile().to_path_buf())
-        .or_else(|| utils::find_achitekfile_for_template(template_path))
 }
 
 fn replacement_text_for_range(source: &str, range: &Range, new_name: &str) -> String {
@@ -272,6 +227,7 @@ mod test {
         TextDocumentIdentifier, TextDocumentPositionParams,
         request::{Rename, Request as LspRequest},
     };
+    use std::fs;
 
     fn handle(
         connection: &Connection,

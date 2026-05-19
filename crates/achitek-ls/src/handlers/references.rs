@@ -11,13 +11,12 @@
 use crate::server::{Document, Documents};
 use crate::{
     editor,
-    server::{ServerState, utils},
+    server::{ServerState, project::ProjectContext, utils},
     syntax,
     workspace::DocumentKind,
 };
 use anyhow::Context;
 use lsp_types::{Location, Position, Range, ReferenceParams, Uri};
-use std::{fs, path::PathBuf};
 
 /// Handles a `textDocument/references` request.
 pub fn handle(
@@ -59,10 +58,9 @@ fn achitekfile_references(
         .map(|target| Location::new(uri.clone(), to_lsp_range(target.range())))
         .collect::<Vec<_>>();
 
-    if let (Some(prompt_name), Some(project_root)) =
-        (prompt_name, project_root_for_uri(state, &uri))
+    if let (Some(prompt_name), Some(project)) = (prompt_name, ProjectContext::for_uri(state, &uri))
     {
-        locations.extend(utils::scan_references(&project_root, &prompt_name)?);
+        locations.extend(project.scan_template_references(&prompt_name)?);
     }
 
     Ok(Some(locations))
@@ -79,35 +77,27 @@ fn tera_references(
         return Ok(None);
     };
 
-    let source = state
-        .documents
-        .get(uri.as_str())
-        .map(|document| Ok(document.text.clone()))
-        .unwrap_or_else(|| {
-            fs::read_to_string(&template_path)
-                .with_context(|| format!("failed to read template `{}`", template_path.display()))
-        })?;
+    let Some(project) = ProjectContext::for_template_path(state, &template_path) else {
+        tracing::debug!(
+            ?uri,
+            "template references skipped because no project was found"
+        );
+        return Ok(None);
+    };
+    let source = project.template_source(&uri, &template_path)?;
     let Some(prompt_name) = utils::reference_at_position(&source, position) else {
         tracing::debug!(?uri, ?position, "no template reference under cursor");
         return Ok(None);
     };
 
-    let Some(achitek_path) = achitekfile_for_template(state, &template_path) else {
-        tracing::debug!(
-            ?uri,
-            reference = prompt_name,
-            "template references skipped because no achitekfile was found"
-        );
-        return Ok(None);
-    };
-    let achitek_uri = utils::path_to_uri(&achitek_path)?;
-    let achitek_source = state
-        .documents
-        .get(achitek_uri.as_str())
-        .map(|document| document.text.clone())
-        .unwrap_or_else(|| fs::read_to_string(&achitek_path).unwrap_or_default());
-    let analysis = editor::build(&achitek_source)
-        .with_context(|| format!("failed to analyze `{}`", achitek_path.display()))?;
+    let achitek_uri = project.achitekfile_uri()?;
+    let achitek_source = project.achitekfile_source()?;
+    let analysis = editor::build(&achitek_source).with_context(|| {
+        format!(
+            "failed to analyze `{}`",
+            project.achitekfile_path().display()
+        )
+    })?;
     let Some(symbol) = analysis
         .symbols()
         .iter()
@@ -129,44 +119,9 @@ fn tera_references(
         .map(|target| Location::new(achitek_uri.clone(), to_lsp_range(target.range())))
         .collect::<Vec<_>>();
 
-    if let Some(project_root) = project_root_for_template(state, &template_path) {
-        locations.extend(utils::scan_references(&project_root, &prompt_name)?);
-    }
+    locations.extend(project.scan_template_references(&prompt_name)?);
 
     Ok(Some(locations))
-}
-
-fn project_root_for_uri(state: &ServerState, uri: &Uri) -> Option<PathBuf> {
-    state
-        .workspace
-        .project_for_uri(uri)
-        .map(|project| project.root().to_path_buf())
-        .or_else(|| utils::blueprint_dir_from_uri(uri))
-}
-
-fn project_root_for_template(
-    state: &ServerState,
-    template_path: &std::path::Path,
-) -> Option<PathBuf> {
-    state
-        .workspace
-        .project_for_path(template_path)
-        .map(|project| project.root().to_path_buf())
-        .or_else(|| {
-            utils::find_achitekfile_for_template(template_path)
-                .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
-        })
-}
-
-fn achitekfile_for_template(
-    state: &ServerState,
-    template_path: &std::path::Path,
-) -> Option<PathBuf> {
-    state
-        .workspace
-        .project_for_path(template_path)
-        .map(|project| project.achitekfile().to_path_buf())
-        .or_else(|| utils::find_achitekfile_for_template(template_path))
 }
 
 fn to_text_position(position: Position) -> syntax::TextPosition {
