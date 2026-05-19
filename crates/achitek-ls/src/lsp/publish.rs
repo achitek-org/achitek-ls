@@ -4,7 +4,11 @@
 //! are produced by their language crates, then converted into LSP diagnostics
 //! here.
 
-use crate::{lsp::project_diagnostics, server::ServerState, workspace::DocumentKind};
+use crate::{
+    lsp::project_diagnostics,
+    server::{ServerState, project::ProjectContext},
+    workspace::DocumentKind,
+};
 use anyhow::Context;
 use lsp_server::{Connection, Message, Notification};
 use lsp_types::{
@@ -38,6 +42,22 @@ pub fn publish(connection: &Connection, uri: &Uri, state: &ServerState) -> anyho
     )
 }
 
+pub fn publish_after_document_update(
+    connection: &Connection,
+    uri: &Uri,
+    state: &ServerState,
+) -> anyhow::Result<()> {
+    publish(connection, uri, state)?;
+
+    match state.document_kind(uri) {
+        DocumentKind::Achitekfile => publish_templates(connection, uri, state)?,
+        DocumentKind::TeraTemplate => publish_achitekfile_for_project(connection, uri, state)?,
+        DocumentKind::Manifest | DocumentKind::Unknown => {}
+    }
+
+    Ok(())
+}
+
 pub fn publish_templates(
     connection: &Connection,
     uri: &Uri,
@@ -61,6 +81,44 @@ pub fn publish_templates(
     }
 
     Ok(())
+}
+
+pub fn publish_achitekfile_for_project(
+    connection: &Connection,
+    uri: &Uri,
+    state: &ServerState,
+) -> anyhow::Result<()> {
+    let Some(project) = ProjectContext::for_uri(state, uri) else {
+        return Ok(());
+    };
+
+    let achitek_uri = project.achitekfile_uri()?;
+    let source = project.achitekfile_source()?;
+    let mut diagnostics =
+        diagnostics_for_document(DocumentKind::Achitekfile, &achitek_uri, &source)?;
+    diagnostics.extend(project_diagnostics::achitekfile_diagnostics(
+        &achitek_uri,
+        state,
+    )?);
+    let version = state
+        .documents
+        .get(achitek_uri.as_str())
+        .map(|document| document.version);
+
+    tracing::debug!(
+        ?uri,
+        ?achitek_uri,
+        count = diagnostics.len(),
+        "publishing project Achitekfile diagnostics"
+    );
+    send_publish_diagnostics(
+        connection,
+        PublishDiagnosticsParams {
+            uri: achitek_uri,
+            diagnostics,
+            version,
+        },
+    )
 }
 
 pub fn clear(connection: &Connection, uri: &Uri) -> anyhow::Result<()> {

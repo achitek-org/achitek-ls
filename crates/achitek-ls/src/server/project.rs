@@ -26,10 +26,14 @@ impl<'a> ProjectContext<'a> {
     /// Builds project context for the project that owns `uri`.
     pub(crate) fn for_uri(state: &'a ServerState, uri: &Uri) -> Option<Self> {
         let path = utils::file_path_from_uri(uri)?;
-        Self::for_path(state, &path).or_else(|| {
-            is_achitekfile_path(&path)
-                .then(|| Self::from_achitekfile_uri(state, path, uri.clone()))?
-        })
+        Self::for_path(state, &path)
+            .or_else(|| {
+                is_achitekfile_path(&path)
+                    .then(|| Self::from_achitekfile_uri(state, path.clone(), uri.clone()))?
+            })
+            .or_else(|| {
+                utils::is_tera_path(&path).then(|| Self::for_template_path(state, &path))?
+            })
     }
 
     /// Builds project context for the project that owns `template_path`.

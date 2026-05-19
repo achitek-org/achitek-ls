@@ -32,8 +32,7 @@ pub fn handle(
         document.version = version;
         document.text = apply_content_changes(&document.text, &params.content_changes);
         tracing::debug!(?uri, version, change_count, "changed document");
-        publish::publish(connection, &uri, state)?;
-        publish::publish_templates(connection, &uri, state)?;
+        publish::publish_after_document_update(connection, &uri, state)?;
     } else {
         tracing::warn!(
             ?uri,
@@ -67,7 +66,7 @@ mod test {
         PublishDiagnosticsParams, VersionedTextDocumentIdentifier,
         notification::{DidChangeTextDocument, Notification as LspNotification},
     };
-    use std::fs;
+    use std::{fs, time::Duration};
 
     fn handle(
         connection: &Connection,
@@ -179,10 +178,59 @@ mod test {
         Ok(())
     }
 
+    #[test]
+    fn handle_template_change_publishes_achitekfile_diagnostics() -> anyhow::Result<()> {
+        let temp_root = utils::temp_dir("achitek-did-change-achitekfile-diagnostics")?;
+        fs::create_dir_all(&temp_root)?;
+        let achitek_path = temp_root.join("Achitekfile");
+        fs::write(&achitek_path, source_with_prompt())?;
+        let template_path = temp_root.join("Cargo.toml.tera");
+        fs::write(&template_path, "{{ project_name }}")?;
+        let achitek_uri = utils::path_to_uri(&achitek_path)?;
+        let template_uri = utils::path_to_uri(&template_path)?;
+        let (server_connection, client_connection) = Connection::memory();
+        let mut documents = Documents::from([(
+            template_uri.as_str().to_owned(),
+            Document {
+                version: 1,
+                text: "{{ project_name }}".to_owned(),
+            },
+        )]);
+        let notification = Notification::new(
+            DidChangeTextDocument::METHOD.to_owned(),
+            DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: template_uri.clone(),
+                    version: 2,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: String::new(),
+                }],
+            },
+        );
+
+        handle(&server_connection, &notification, &mut documents)?;
+
+        let template_diagnostics = recv_publish_diagnostics(&client_connection)?;
+        assert_eq!(template_diagnostics.uri, template_uri);
+        let achitek_diagnostics = recv_publish_diagnostics(&client_connection)?;
+        assert_eq!(achitek_diagnostics.uri, achitek_uri);
+        assert_eq!(achitek_diagnostics.diagnostics.len(), 1);
+        assert_eq!(
+            achitek_diagnostics.diagnostics[0].message,
+            "prompt `project_name` is not used by any template"
+        );
+
+        fs::remove_dir_all(&temp_root)?;
+        Ok(())
+    }
+
     fn recv_publish_diagnostics(
         connection: &Connection,
     ) -> anyhow::Result<PublishDiagnosticsParams> {
-        match connection.receiver.recv()? {
+        match connection.receiver.recv_timeout(Duration::from_secs(1))? {
             Message::Notification(notification)
                 if notification.method == "textDocument/publishDiagnostics" =>
             {
@@ -201,6 +249,20 @@ mod test {
             blueprint {
               version = "1.0.0"
               name = "minimal"
+            }
+        "#}
+        .to_owned()
+    }
+
+    fn source_with_prompt() -> String {
+        indoc! {r#"
+            blueprint {
+              version = "1.0.0"
+              name = "minimal"
+            }
+
+            prompt "project_name" {
+              type = string
             }
         "#}
         .to_owned()

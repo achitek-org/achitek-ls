@@ -91,6 +91,28 @@ pub(crate) fn reference_target_at_position(
         .map(|reference| (reference.name, reference.location.range))
 }
 
+pub(crate) fn is_template_expression_position(source: &str, position: Position) -> bool {
+    let row = usize::try_from(position.line).ok();
+    let column = usize::try_from(position.character).ok();
+    let Some((line, column)) = row.and_then(|row| source.lines().nth(row)).zip(column) else {
+        return false;
+    };
+    if column > line.len() {
+        return false;
+    }
+
+    let before = &line[..column];
+    let in_output = before
+        .rfind("{{")
+        .is_some_and(|open| before[open..].find("}}").is_none());
+    let in_tag = before
+        .rfind("{%")
+        .is_some_and(|open| before[open..].find("%}").is_none())
+        && before.chars().filter(|ch| *ch == '"').count() % 2 == 0;
+
+    in_output || in_tag
+}
+
 pub(crate) fn template_references_in_source(source: &str, uri: &Uri) -> Vec<TemplateReference> {
     let mut references = Vec::new();
 
