@@ -1,68 +1,28 @@
-//! Achitekfile editor features used by LSP request handlers.
-//!
-//! This module adapts parsed Achitekfile source into editor-oriented answers
-//! such as hover, completion, definition, references, rename preparation, and
-//! symbols. Achitekfile parsing and source coordinates come from the
-//! `achitekfile` crate; this module stays focused on language-server behavior.
 mod completion;
+mod definition;
 mod hover;
 mod navigation;
+mod reference;
+mod rename;
+mod shared;
+
+pub use completion::{Completion, CompletionKind};
+pub use definition::DefinitionTarget;
+pub use hover::Hover;
+pub use reference::ReferenceTarget;
+pub use rename::PrepareRenameTarget;
 
 use achitekfile::{ParseError, TextPosition, TextRange};
 use tree_sitter::{Node, Tree};
 
-/// Parsed source plus the Tree-sitter tree used by editor features.
 #[derive(Debug)]
-pub struct SourceTree {
-    source: String,
-    tree: Tree,
-}
-
-impl SourceTree {
-    /// Returns the original source used to build this syntax tree.
-    pub fn source(&self) -> &str {
-        &self.source
-    }
-
-    /// Returns the raw Tree-sitter tree.
-    pub fn tree(&self) -> &Tree {
-        &self.tree
-    }
-
-    /// Returns the root CST node.
-    pub fn root_node(&self) -> Node<'_> {
-        self.tree.root_node()
-    }
-
-    /// Returns the source range occupied by a given node.
-    pub fn range_for(&self, node: Node<'_>) -> TextRange {
-        TextRange {
-            start: TextPosition {
-                line: node.start_position().row,
-                byte: node.start_position().column,
-            },
-            end: TextPosition {
-                line: node.end_position().row,
-                byte: node.end_position().column,
-            },
-        }
-    }
-
-    /// Returns the source text covered by a given node.
-    pub fn text_for<'a>(&'a self, node: Node<'_>) -> &'a str {
-        &self.source[node.byte_range()]
-    }
-}
-
-/// Editor-facing model for a single Achitekfile document.
-#[derive(Debug)]
-pub struct DocumentModel {
+pub struct EditorBuffer {
     syntax: SourceTree,
     prompt_declarations: Vec<navigation::PromptDeclaration>,
     symbols: Vec<Symbol>,
 }
 
-impl DocumentModel {
+impl EditorBuffer {
     /// Returns the parsed syntax tree for the document.
     pub fn syntax(&self) -> &SourceTree {
         &self.syntax
@@ -113,6 +73,49 @@ impl DocumentModel {
     }
 }
 
+/// Parsed source plus the Tree-sitter tree used by editor features.
+#[derive(Debug)]
+pub struct SourceTree {
+    source: String,
+    tree: Tree,
+}
+
+impl SourceTree {
+    /// Returns the original source used to build this syntax tree.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// Returns the raw Tree-sitter tree.
+    pub fn tree(&self) -> &Tree {
+        &self.tree
+    }
+
+    /// Returns the root CST node.
+    pub fn root_node(&self) -> Node<'_> {
+        self.tree.root_node()
+    }
+
+    /// Returns the source range occupied by a given node.
+    pub fn range_for(&self, node: Node<'_>) -> TextRange {
+        TextRange {
+            start: TextPosition {
+                line: node.start_position().row,
+                byte: node.start_position().column,
+            },
+            end: TextPosition {
+                line: node.end_position().row,
+                byte: node.end_position().column,
+            },
+        }
+    }
+
+    /// Returns the source text covered by a given node.
+    pub fn text_for<'a>(&'a self, node: Node<'_>) -> &'a str {
+        &self.source[node.byte_range()]
+    }
+}
+
 /// A document symbol derived from Achitek source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Symbol {
@@ -122,101 +125,6 @@ pub struct Symbol {
     range: TextRange,
     selection_range: TextRange,
     children: Vec<Symbol>,
-}
-
-/// Hover content derived from Achitek source.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hover {
-    contents: String,
-    range: TextRange,
-}
-
-/// Definition target derived from Achitek source.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DefinitionTarget {
-    range: TextRange,
-    selection_range: TextRange,
-}
-
-/// Prepare-rename target derived from Achitek source.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PrepareRenameTarget {
-    range: TextRange,
-    placeholder: String,
-}
-
-/// Reference target derived from Achitek source.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReferenceTarget {
-    range: TextRange,
-}
-
-/// Completion item derived from Achitek source and context.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Completion {
-    label: String,
-    detail: Option<String>,
-    kind: CompletionKind,
-}
-
-impl Completion {
-    /// Returns the completion label inserted into the document.
-    pub fn label(&self) -> &str {
-        &self.label
-    }
-
-    /// Returns optional detail text for the completion item.
-    pub fn detail(&self) -> Option<&str> {
-        self.detail.as_deref()
-    }
-
-    /// Returns the completion kind.
-    pub fn kind(&self) -> CompletionKind {
-        self.kind
-    }
-}
-
-impl Hover {
-    /// Returns the hover contents as markdown-friendly text.
-    pub fn contents(&self) -> &str {
-        &self.contents
-    }
-
-    /// Returns the range that should be highlighted for the hover.
-    pub fn range(&self) -> TextRange {
-        self.range
-    }
-}
-
-impl DefinitionTarget {
-    /// Returns the full range of the definition target.
-    pub fn range(&self) -> TextRange {
-        self.range
-    }
-
-    /// Returns the preferred selection range for the definition target.
-    pub fn selection_range(&self) -> TextRange {
-        self.selection_range
-    }
-}
-
-impl PrepareRenameTarget {
-    /// Returns the source range that should be renamed.
-    pub fn range(&self) -> TextRange {
-        self.range
-    }
-
-    /// Returns the placeholder name to show before rename.
-    pub fn placeholder(&self) -> &str {
-        &self.placeholder
-    }
-}
-
-impl ReferenceTarget {
-    /// Returns the source range for the reference target.
-    pub fn range(&self) -> TextRange {
-        self.range
-    }
 }
 
 impl Symbol {
@@ -262,23 +170,13 @@ pub enum SymbolKind {
     Validate,
 }
 
-/// Completion kinds understood by editor features.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CompletionKind {
-    /// A language keyword or DSL construct.
-    Keyword,
-    /// A property or attribute name.
-    Property,
-    /// A value domain such as a prompt type.
-    Value,
-    /// A reference to another prompt.
-    Reference,
-    /// A built-in function or combinator.
-    Function,
+/// Builds editor features for a single Achitek source document.
+pub fn build(source: &str) -> Result<EditorBuffer, ParseError> {
+    from_source(source)
 }
 
 /// Builds editor features for a single Achitek source document.
-pub fn build(source: &str) -> Result<DocumentModel, ParseError> {
+pub fn from_source(source: &str) -> Result<EditorBuffer, ParseError> {
     let tree = achitekfile::parse_tree(source)?;
     let analysis =
         achitekfile::analyze(source).expect("analysis should not fail after parsing succeeds");
@@ -289,41 +187,11 @@ pub fn build(source: &str) -> Result<DocumentModel, ParseError> {
     let prompt_declarations = navigation::collect_prompt_declarations(&syntax, &analysis);
     let symbols = collect_symbols(&syntax, &analysis);
 
-    Ok(DocumentModel {
+    Ok(EditorBuffer {
         syntax,
         prompt_declarations,
         symbols,
     })
-}
-
-pub(super) fn prompt_type_for_block<'a>(
-    syntax: &'a SourceTree,
-    prompt_block: Node<'_>,
-) -> Option<&'a str> {
-    for index in 0..prompt_block.child_count() {
-        let Some(child) =
-            prompt_block.child(u32::try_from(index).expect("child index should fit into u32"))
-        else {
-            continue;
-        };
-
-        if child.kind() == "question_attribute" {
-            for nested_index in 0..child.child_count() {
-                let Some(nested) = child
-                    .child(u32::try_from(nested_index).expect("child index should fit into u32"))
-                else {
-                    continue;
-                };
-
-                if nested.kind() == "type_attribute" {
-                    let value = nested.child_by_field_name("value")?;
-                    return Some(syntax.text_for(value));
-                }
-            }
-        }
-    }
-
-    None
 }
 
 fn collect_symbols(syntax: &SourceTree, analysis: &achitekfile::Analysis<'_>) -> Vec<Symbol> {
@@ -351,7 +219,7 @@ fn prompt_symbol(
     syntax: &SourceTree,
     prompt: &achitekfile::model::Spanned<achitekfile::model::Prompt>,
 ) -> Symbol {
-    let prompt_block = prompt_block_for_range(syntax, prompt.range);
+    let prompt_block = shared::prompt_block_for_range(syntax, prompt.range);
     let selection_range = prompt_block
         .and_then(|node| node.child_by_field_name("name"))
         .map(|node| syntax.range_for(node))
@@ -368,24 +236,6 @@ fn prompt_symbol(
         selection_range,
         children,
     }
-}
-
-fn prompt_block_for_range<'a>(syntax: &'a SourceTree, range: TextRange) -> Option<Node<'a>> {
-    let root = syntax.root_node();
-
-    for index in 0..root.child_count() {
-        let Some(child) =
-            root.child(u32::try_from(index).expect("child index should fit into u32"))
-        else {
-            continue;
-        };
-
-        if child.kind() == "prompt_block" && syntax.range_for(child) == range {
-            return Some(child);
-        }
-    }
-
-    None
 }
 
 fn collect_prompt_children(syntax: &SourceTree, prompt_node: Node<'_>) -> Vec<Symbol> {
@@ -433,7 +283,7 @@ mod tests {
             }
         "#};
 
-        let analysis = build(source).expect("valid source should build");
+        let analysis = from_source(source).expect("valid source should build");
         let completions = analysis.completions(TextPosition { line: 7, byte: 2 });
 
         assert!(!completions.iter().any(|item| item.label() == "type"));
@@ -459,7 +309,7 @@ mod tests {
             }
         "#};
 
-        let analysis = build(source).expect("valid source should build");
+        let analysis = from_source(source).expect("valid source should build");
         let completions = analysis.completions(TextPosition { line: 10, byte: 4 });
 
         assert!(
@@ -488,7 +338,7 @@ mod tests {
             }
         "#};
 
-        let analysis = build(source).expect("valid source should build");
+        let analysis = from_source(source).expect("valid source should build");
 
         assert_eq!(analysis.symbols().len(), 2);
         assert_eq!(analysis.symbols()[0].name(), "blueprint");
@@ -517,7 +367,7 @@ mod tests {
             }
         "#};
 
-        let analysis = build(source).expect("valid source should build");
+        let analysis = from_source(source).expect("valid source should build");
         let hover = analysis
             .hover(TextPosition { line: 6, byte: 9 })
             .expect("hover should exist for prompt type");
@@ -539,7 +389,7 @@ mod tests {
             }
         "#};
 
-        let analysis = build(source).expect("valid source should build");
+        let analysis = from_source(source).expect("valid source should build");
         let completions = analysis.completions(TextPosition { line: 6, byte: 9 });
 
         assert!(completions.iter().any(|item| item.label() == "string"));
@@ -566,7 +416,7 @@ mod tests {
             }
         "#};
 
-        let analysis = build(source).expect("valid source should build");
+        let analysis = from_source(source).expect("valid source should build");
         let completions = analysis.completions(TextPosition { line: 13, byte: 15 });
 
         assert!(completions.iter().any(|item| item.label() == "all"));
@@ -597,7 +447,7 @@ mod tests {
             }
         "#};
 
-        let analysis = build(source).expect("valid source should build");
+        let analysis = from_source(source).expect("valid source should build");
         let definition = analysis
             .definition(TextPosition { line: 13, byte: 16 })
             .expect("definition should exist for prompt reference");
@@ -626,7 +476,7 @@ mod tests {
             }
         "#};
 
-        let analysis = build(source).expect("valid source should build");
+        let analysis = from_source(source).expect("valid source should build");
         let references = analysis.references(TextPosition { line: 5, byte: 9 }, true);
 
         assert_eq!(references.len(), 2);
@@ -647,7 +497,7 @@ mod tests {
             }
         "#};
 
-        let analysis = build(source).expect("valid source should build");
+        let analysis = from_source(source).expect("valid source should build");
         let target = analysis
             .prepare_rename(TextPosition { line: 5, byte: 10 })
             .expect("prepare rename should exist for prompt definition");
@@ -675,7 +525,7 @@ mod tests {
             }
         "#};
 
-        let analysis = build(source).expect("valid source should build");
+        let analysis = from_source(source).expect("valid source should build");
         let target = analysis
             .prepare_rename(TextPosition { line: 11, byte: 16 })
             .expect("prepare rename should exist for prompt reference");

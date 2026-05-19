@@ -47,11 +47,11 @@ fn achitekfile_references(
         return Ok(None);
     };
 
-    let analysis = editor::build(&document.text)
+    let editor_buffer = editor::from_source(&document.text)
         .with_context(|| format!("failed to analyze document `{:?}`", uri))?;
     let cursor_position = to_text_position(position);
-    let prompt_name = analysis.prompt_name(cursor_position);
-    let mut locations = analysis
+    let prompt_name = editor_buffer.prompt_name(cursor_position);
+    let mut locations = editor_buffer
         .references(cursor_position, include_declaration)
         .into_iter()
         .map(|target| Location::new(uri.clone(), to_lsp_range(target.range())))
@@ -91,13 +91,13 @@ fn tera_references(
 
     let achitek_uri = project.achitekfile_uri()?;
     let achitek_source = project.achitekfile_source()?;
-    let analysis = editor::build(&achitek_source).with_context(|| {
+    let editor_buffer = editor::from_source(&achitek_source).with_context(|| {
         format!(
             "failed to analyze `{}`",
             project.achitekfile_path().display()
         )
     })?;
-    let Some(symbol) = analysis
+    let Some(symbol) = editor_buffer
         .symbols()
         .iter()
         .find(|symbol| symbol.kind() == editor::SymbolKind::Prompt && symbol.name() == prompt_name)
@@ -112,7 +112,7 @@ fn tera_references(
     };
 
     let cursor_position = symbol.selection_range().start;
-    let mut locations = analysis
+    let mut locations = editor_buffer
         .references(cursor_position, include_declaration)
         .into_iter()
         .map(|target| Location::new(achitek_uri.clone(), to_lsp_range(target.range())))

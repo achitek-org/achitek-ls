@@ -1,4 +1,4 @@
-use super::{DefinitionTarget, PrepareRenameTarget, ReferenceTarget, SourceTree};
+use super::{DefinitionTarget, PrepareRenameTarget, ReferenceTarget, SourceTree, shared};
 use achitekfile::{TextPosition, TextRange};
 use tree_sitter::Node;
 
@@ -10,7 +10,7 @@ pub(super) struct PromptDeclaration {
     selection_range: TextRange,
 }
 
-pub(super) fn collect_prompt_declarations(
+pub fn collect_prompt_declarations(
     syntax: &SourceTree,
     analysis: &achitekfile::Analysis<'_>,
 ) -> Vec<PromptDeclaration> {
@@ -19,7 +19,7 @@ pub(super) fn collect_prompt_declarations(
         .prompts()
         .iter()
         .map(|prompt| {
-            let selection_range = super::prompt_block_for_range(syntax, prompt.range)
+            let selection_range = shared::prompt_block_for_range(syntax, prompt.range)
                 .and_then(|node| node.child_by_field_name("name"))
                 .map(|node| syntax.range_for(node))
                 .unwrap_or(prompt.range);
@@ -33,7 +33,7 @@ pub(super) fn collect_prompt_declarations(
         .collect()
 }
 
-pub(super) fn definition_for_position(
+pub fn definition_for_position(
     syntax: &SourceTree,
     prompt_declarations: &[PromptDeclaration],
     position: TextPosition,
@@ -60,7 +60,7 @@ pub(super) fn definition_for_position(
     })
 }
 
-pub(super) fn prepare_rename_for_position(
+pub fn prepare_rename_for_position(
     syntax: &SourceTree,
     prompt_declarations: &[PromptDeclaration],
     position: TextPosition,
@@ -95,7 +95,7 @@ pub(super) fn prepare_rename_for_position(
     }
 }
 
-pub(super) fn references_for_position(
+pub fn references_for_position(
     syntax: &SourceTree,
     prompt_declarations: &[PromptDeclaration],
     position: TextPosition,
@@ -121,7 +121,7 @@ pub(super) fn references_for_position(
     references
 }
 
-pub(super) fn prompt_name_at_position(
+pub fn prompt_name_at_position(
     syntax: &SourceTree,
     position: TextPosition,
     prompt_declarations: &[PromptDeclaration],

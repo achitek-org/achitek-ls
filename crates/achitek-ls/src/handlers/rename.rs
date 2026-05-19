@@ -43,10 +43,10 @@ fn achitekfile_rename(
         return Ok(None);
     };
 
-    let analysis = editor::build(&document.text)
+    let editor_buffer = editor::from_source(&document.text)
         .with_context(|| format!("failed to analyze document `{:?}`", uri))?;
     let cursor_position = to_text_position(position);
-    let Some(prompt_name) = analysis.prompt_name(cursor_position) else {
+    let Some(prompt_name) = editor_buffer.prompt_name(cursor_position) else {
         return Ok(None);
     };
     let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
@@ -54,7 +54,7 @@ fn achitekfile_rename(
         &mut changes,
         uri.clone(),
         &document.text,
-        &analysis,
+        &editor_buffer,
         cursor_position,
         new_name,
     );
@@ -94,13 +94,13 @@ fn tera_rename(
 
     let achitek_uri = project.achitekfile_uri()?;
     let achitek_source = project.achitekfile_source()?;
-    let analysis = editor::build(&achitek_source).with_context(|| {
+    let editor_buffer = editor::from_source(&achitek_source).with_context(|| {
         format!(
             "failed to analyze `{}`",
             project.achitekfile_path().display()
         )
     })?;
-    let Some(symbol) = analysis
+    let Some(symbol) = editor_buffer
         .symbols()
         .iter()
         .find(|symbol| symbol.kind() == editor::SymbolKind::Prompt && symbol.name() == prompt_name)
@@ -119,7 +119,7 @@ fn tera_rename(
         &mut changes,
         achitek_uri,
         &achitek_source,
-        &analysis,
+        &editor_buffer,
         symbol.selection_range().start,
         new_name,
     );
@@ -138,7 +138,7 @@ fn add_achitekfile_edits(
     changes: &mut HashMap<Uri, Vec<TextEdit>>,
     uri: Uri,
     source: &str,
-    analysis: &editor::DocumentModel,
+    analysis: &editor::EditorBuffer,
     position: achitekfile::TextPosition,
     new_name: &str,
 ) {

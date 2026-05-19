@@ -43,10 +43,10 @@ fn achitekfile_definition(
         return Ok(None);
     };
 
-    let analysis = editor::build(&document.text)
+    let editor_buffer = editor::from_source(&document.text)
         .with_context(|| format!("failed to analyze document `{:?}`", uri))?;
 
-    Ok(analysis
+    Ok(editor_buffer
         .definition(to_text_position(position))
         .map(|target| {
             GotoDefinitionResponse::Scalar(Location::new(
@@ -82,13 +82,13 @@ fn tera_definition(
 
     let achitek_uri = project.achitekfile_uri()?;
     let achitek_source = project.achitekfile_source()?;
-    let analysis = editor::build(&achitek_source).with_context(|| {
+    let editor_buffer = editor::from_source(&achitek_source).with_context(|| {
         format!(
             "failed to analyze `{}`",
             project.achitekfile_path().display()
         )
     })?;
-    let Some(symbol) = analysis.symbols().iter().find(|symbol| {
+    let Some(symbol) = editor_buffer.symbols().iter().find(|symbol| {
         symbol.kind() == editor::SymbolKind::Prompt && symbol.name() == reference_name
     }) else {
         tracing::debug!(

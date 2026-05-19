@@ -31,7 +31,7 @@ pub fn handle(
     params: FoldingRangeParams,
 ) -> anyhow::Result<Option<Vec<FoldingRange>>> {
     if let Some(document) = state.documents.get(params.text_document.uri.as_str()) {
-        let analysis = editor::build(&document.text).with_context(|| {
+        let editor_buffer = editor::from_source(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
                 params.text_document.uri
@@ -39,7 +39,7 @@ pub fn handle(
         })?;
         let mut ranges = Vec::new();
 
-        for symbol in analysis.symbols() {
+        for symbol in editor_buffer.symbols() {
             collect_folding_ranges(symbol, &mut ranges);
         }
 

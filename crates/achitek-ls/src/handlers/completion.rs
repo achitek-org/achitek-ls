@@ -25,13 +25,13 @@ pub fn handle(
         .documents
         .get(params.text_document_position.text_document.uri.as_str())
     {
-        let analysis = editor::build(&document.text).with_context(|| {
+        let editor_buffer = editor::from_source(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
                 params.text_document_position.text_document.uri
             )
         })?;
-        let items = analysis
+        let items = editor_buffer
             .completions(to_text_position(params.text_document_position.position))
             .into_iter()
             .map(to_lsp_completion_item)

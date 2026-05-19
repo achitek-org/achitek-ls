@@ -1,6 +1,46 @@
-use super::{Completion, CompletionKind, SourceTree, Symbol, SymbolKind, prompt_type_for_block};
+use super::{SourceTree, Symbol, SymbolKind, shared};
 use achitekfile::TextPosition;
 use tree_sitter::Node;
+
+/// Completion kinds understood by editor features.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompletionKind {
+    /// A language keyword or DSL construct.
+    Keyword,
+    /// A property or attribute name.
+    Property,
+    /// A value domain such as a prompt type.
+    Value,
+    /// A reference to another prompt.
+    Reference,
+    /// A built-in function or combinator.
+    Function,
+}
+
+/// Completion item derived from Achitek source and context.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Completion {
+    label: String,
+    detail: Option<String>,
+    kind: CompletionKind,
+}
+
+impl Completion {
+    /// Returns the completion label inserted into the document.
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    /// Returns optional detail text for the completion item.
+    pub fn detail(&self) -> Option<&str> {
+        self.detail.as_deref()
+    }
+
+    /// Returns the completion kind.
+    pub fn kind(&self) -> CompletionKind {
+        self.kind
+    }
+}
 
 pub(super) fn completions_for_position(
     syntax: &SourceTree,
@@ -161,7 +201,7 @@ fn blueprint_attribute_completions() -> Vec<Completion> {
 
 fn prompt_attribute_completions(syntax: &SourceTree, position: TextPosition) -> Vec<Completion> {
     let prompt_block = ancestor_node_at_position(syntax, position, "prompt_block");
-    let prompt_type = prompt_block.and_then(|node| prompt_type_for_block(syntax, node));
+    let prompt_type = prompt_block.and_then(|node| shared::prompt_type_for_block(syntax, node));
     let mut items = vec![
         completion("type", Some("Prompt type"), CompletionKind::Property),
         completion("help", Some("Prompt help text"), CompletionKind::Property),
@@ -213,7 +253,7 @@ fn prompt_attribute_completions(syntax: &SourceTree, position: TextPosition) -> 
 fn validate_attribute_completions(syntax: &SourceTree, position: TextPosition) -> Vec<Completion> {
     let prompt_block = ancestor_node_at_position(syntax, position, "prompt_block");
     let validate_block = ancestor_node_at_position(syntax, position, "validate_block");
-    let prompt_type = prompt_block.and_then(|node| prompt_type_for_block(syntax, node));
+    let prompt_type = prompt_block.and_then(|node| shared::prompt_type_for_block(syntax, node));
     let mut items = Vec::new();
 
     if matches!(prompt_type, None | Some("string" | "paragraph")) {

@@ -29,7 +29,7 @@ pub fn handle(
     params: SelectionRangeParams,
 ) -> anyhow::Result<Option<Vec<SelectionRange>>> {
     if let Some(document) = state.documents.get(params.text_document.uri.as_str()) {
-        let analysis = editor::build(&document.text).with_context(|| {
+        let editor_buffer = editor::from_source(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
                 params.text_document.uri
@@ -40,7 +40,7 @@ pub fn handle(
             params
                 .positions
                 .iter()
-                .filter_map(|position| selection_range_for_position(&analysis, *position))
+                .filter_map(|position| selection_range_for_position(&editor_buffer, *position))
                 .collect::<Vec<_>>(),
         ))
     } else {
@@ -50,7 +50,7 @@ pub fn handle(
 
 /// Builds the nested LSP selection range for a single position.
 fn selection_range_for_position(
-    analysis: &editor::DocumentModel,
+    analysis: &editor::EditorBuffer,
     position: Position,
 ) -> Option<SelectionRange> {
     let position = achitekfile::TextPosition {

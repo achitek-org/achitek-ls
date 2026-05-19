@@ -22,13 +22,13 @@ pub fn handle(state: &ServerState, params: HoverParams) -> anyhow::Result<Option
         .documents
         .get(text_document_position.text_document.uri.as_str())
     {
-        let analysis = editor::build(&document.text).with_context(|| {
+        let editor_buffer = editor::from_source(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
                 text_document_position.text_document.uri
             )
         })?;
-        Ok(analysis
+        Ok(editor_buffer
             .hover(to_text_position(text_document_position.position))
             .map(to_lsp_hover))
     } else {

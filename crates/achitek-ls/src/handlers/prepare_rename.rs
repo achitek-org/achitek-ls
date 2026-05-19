@@ -39,13 +39,13 @@ fn achitekfile_prepare_rename(
         return Ok(None);
     };
 
-    let analysis = editor::build(&document.text).with_context(|| {
+    let editor_buffer = editor::from_source(&document.text).with_context(|| {
         format!(
             "failed to analyze document `{:?}`",
             params.text_document.uri
         )
     })?;
-    Ok(analysis
+    Ok(editor_buffer
         .prepare_rename(to_text_position(params.position))
         .map(|target| PrepareRenameResponse::RangeWithPlaceholder {
             range: to_lsp_range(target.range()),

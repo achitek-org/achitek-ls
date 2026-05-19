@@ -32,13 +32,13 @@ pub fn handle(
     params: DocumentSymbolParams,
 ) -> anyhow::Result<Option<DocumentSymbolResponse>> {
     if let Some(document) = state.documents.get(params.text_document.uri.as_str()) {
-        let analysis = editor::build(&document.text).with_context(|| {
+        let editor_buffer = editor::from_source(&document.text).with_context(|| {
             format!(
                 "failed to analyze document `{:?}`",
                 params.text_document.uri
             )
         })?;
-        let symbols = analysis
+        let symbols = editor_buffer
             .symbols()
             .iter()
             .map(to_lsp_document_symbol)

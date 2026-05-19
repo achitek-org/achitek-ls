@@ -1,8 +1,27 @@
-use super::{Hover, SourceTree, prompt_type_for_block};
+use super::{SourceTree, shared};
 use achitekfile::{TextPosition, TextRange};
 use tree_sitter::Node;
 
-pub(super) fn hover_for_position(syntax: &SourceTree, position: TextPosition) -> Option<Hover> {
+/// Hover content derived from Achitek source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hover {
+    contents: String,
+    range: TextRange,
+}
+
+impl Hover {
+    /// Returns the hover contents as markdown-friendly text.
+    pub fn contents(&self) -> &str {
+        &self.contents
+    }
+
+    /// Returns the range that should be highlighted for the hover.
+    pub fn range(&self) -> TextRange {
+        self.range
+    }
+}
+
+pub fn hover_for_position(syntax: &SourceTree, position: TextPosition) -> Option<Hover> {
     let point = tree_sitter::Point {
         row: position.line,
         column: position.byte,
@@ -89,7 +108,7 @@ pub(super) fn hover_for_position(syntax: &SourceTree, position: TextPosition) ->
 fn hover_for_prompt_block(syntax: &SourceTree, node: Node<'_>) -> Option<Hover> {
     let name_node = node.child_by_field_name("name")?;
     let name = syntax.text_for(name_node).trim_matches('"');
-    let prompt_type = prompt_type_for_block(syntax, node).unwrap_or("unknown");
+    let prompt_type = shared::prompt_type_for_block(syntax, node).unwrap_or("unknown");
 
     Some(simple_hover(
         syntax.range_for(name_node),

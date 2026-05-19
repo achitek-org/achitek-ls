@@ -27,10 +27,10 @@ pub fn handle(
         let uri = uri
             .parse::<Uri>()
             .with_context(|| format!("failed to parse document URI `{uri}`"))?;
-        let analysis = editor::build(&document.text)
+        let editor_buffer = editor::from_source(&document.text)
             .with_context(|| format!("failed to analyze document `{:?}`", uri))?;
 
-        for symbol in analysis.symbols() {
+        for symbol in editor_buffer.symbols() {
             if symbol.kind() != editor::SymbolKind::Prompt {
                 continue;
             }
