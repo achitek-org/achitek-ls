@@ -50,7 +50,7 @@ fn achitekfile_references(
     let analysis = editor::build(&document.text)
         .with_context(|| format!("failed to analyze document `{:?}`", uri))?;
     let cursor_position = to_text_position(position);
-    let prompt_name = analysis.prompt_name(cursor_position).map(str::to_owned);
+    let prompt_name = analysis.prompt_name(cursor_position);
     let mut locations = analysis
         .references(cursor_position, include_declaration)
         .into_iter()

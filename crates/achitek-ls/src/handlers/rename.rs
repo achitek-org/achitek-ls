@@ -46,7 +46,7 @@ fn achitekfile_rename(
     let analysis = editor::build(&document.text)
         .with_context(|| format!("failed to analyze document `{:?}`", uri))?;
     let cursor_position = to_text_position(position);
-    let Some(prompt_name) = analysis.prompt_name(cursor_position).map(str::to_owned) else {
+    let Some(prompt_name) = analysis.prompt_name(cursor_position) else {
         return Ok(None);
     };
     let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
