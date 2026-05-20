@@ -1,7 +1,24 @@
+//! Low-level Tree-sitter parsing for Tera template source.
+
 use std::backtrace::Backtrace;
 use tree_sitter::{Language, Parser, Tree};
 
 /// Parses Tera source text into a Tree-sitter syntax tree.
+///
+/// This is a low-level API. Prefer [`crate::analyze`] unless you specifically
+/// need direct Tree-sitter access.
+///
+/// ```
+/// let tree = terafile::parse(r#"Hello {{ name }}"#)?;
+///
+/// assert_eq!(tree.root_node().kind(), "source_file");
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+///
+/// # Errors
+///
+/// Returns [`ParseError`] if the parser cannot be configured with the Tera
+/// grammar or if Tree-sitter does not produce a tree.
 pub fn parse(source: &str) -> Result<Tree, ParseError> {
     let mut parser = Parser::new();
     let language: Language = crate::tree_sitter_tera::LANGUAGE.into();
@@ -14,6 +31,9 @@ pub fn parse(source: &str) -> Result<Tree, ParseError> {
 }
 
 /// Errors that can occur while parsing Tera source.
+///
+/// See [`parse`] for an example of handling parser setup and Tree-sitter parse
+/// failures with `?`.
 #[derive(Debug)]
 pub struct ParseError {
     kind: ParseErrorKind,
@@ -23,17 +43,23 @@ pub struct ParseError {
 impl ParseError {
     /// Returns true when parser setup failed because the Tree-sitter language
     /// could not be configured.
+    ///
+    /// See [`parse`] for a complete example.
     pub fn is_language(&self) -> bool {
         matches!(self.kind, ParseErrorKind::Language(_))
     }
 
     /// Returns true when Tree-sitter did not produce a parse tree.
+    ///
+    /// See [`parse`] for a complete example.
     pub fn is_parse_cancelled(&self) -> bool {
         matches!(self.kind, ParseErrorKind::ParseCancelled)
     }
 
     /// Returns the underlying Tree-sitter language error, if parser setup
     /// failed.
+    ///
+    /// See [`parse`] for a complete example.
     pub fn language_error(&self) -> Option<&tree_sitter::LanguageError> {
         match &self.kind {
             ParseErrorKind::Language(source) => Some(source),
@@ -42,6 +68,8 @@ impl ParseError {
     }
 
     /// Returns the backtrace captured when the error was created.
+    ///
+    /// See [`parse`] for a complete example.
     pub fn backtrace(&self) -> &Backtrace {
         &self.backtrace
     }
