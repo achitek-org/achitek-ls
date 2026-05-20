@@ -18,13 +18,13 @@ fmt-check:
 clippy:
     cargo clippy --all-targets --all-features -- -D warnings
 
-# Run tests with nextest
-test-all:
-    cargo nextest run --workspace
-
-# Run tests for specific crate
-test crate:
-  cargo nextest run -p {{crate}}
+# Run all tests, or test for a single crate. Ex: just test OR just test terafile
+test crate='':
+    @if [ -z "{{crate}}" ]; then \
+        cargo nextest run --workspace; \
+    else \
+        cargo nextest run -p "{{crate}}"; \
+    fi
 
 # Run tests in watch mode
 test-watch:
@@ -47,7 +47,7 @@ clean:
     cargo clean
 
 # Run all pre-commit checks
-pre-commit: fmt-check clippy test-all check
+pre-commit: fmt-check clippy test check
 
 # Run all CI checks
 ci:
