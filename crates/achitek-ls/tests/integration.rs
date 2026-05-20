@@ -1,3 +1,6 @@
+#[path = "features/completion.rs"]
+mod completion;
+
 #[path = "features/hover.rs"]
 mod hover;
 

@@ -1,5 +1,6 @@
 use lsp_server::{Connection, Message, Request, Response};
 use lsp_types::PublishDiagnosticsParams;
+use std::path::PathBuf;
 
 pub const TEST_URI: &str = "file:///workspace/achitekfile";
 
@@ -60,4 +61,13 @@ pub fn published_diagnostics_sink(
         }
         message => anyhow::bail!("expected publishDiagnostics, got {message:?}"),
     }
+}
+
+pub fn temp_dir(prefix: &str) -> anyhow::Result<PathBuf> {
+    Ok(std::env::temp_dir().join(format!(
+        "{prefix}-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_nanos()
+    )))
 }
