@@ -35,7 +35,7 @@ use tree_sitter::{Node, Point, Range};
 /// ```
 /// let severity = achitek_source::Severity::Warning;
 ///
-/// assert_eq!(format!("{severity:?}"), "Warning");
+/// assert_eq!(severity.to_string(), "warning");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -46,6 +46,18 @@ pub enum Severity {
     Warning,
     /// Low-priority guidance.
     Hint,
+}
+
+impl std::fmt::Display for Severity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let severity = match self {
+            Self::Error => "error",
+            Self::Warning => "warning",
+            Self::Hint => "hint",
+        };
+
+        f.write_str(severity)
+    }
 }
 
 /// A zero-based byte position in source text.
