@@ -10,6 +10,7 @@ pub use achitek_source::Spanned;
 
 /// Recovering semantic representation of one Tera template.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TeraFile {
     dependencies: Vec<Spanned<TemplateDependency>>,
     macros: Vec<Spanned<Macro>>,
@@ -92,6 +93,7 @@ impl TeraFile {
 
 /// A dependency on another Tera template.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TemplateDependency {
     /// The construct that declared the dependency.
     pub kind: TemplateDependencyKind,
@@ -101,6 +103,7 @@ pub struct TemplateDependency {
 
 /// The construct that declared a template dependency.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TemplateDependencyKind {
     /// `{% extends "base.html" %}`.
     Extends,
@@ -118,6 +121,7 @@ pub enum TemplateDependencyKind {
 
 /// Static template path information.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TemplatePath {
     /// One static string path.
     Single(String),
@@ -127,6 +131,7 @@ pub enum TemplatePath {
 
 /// A Tera macro definition.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Macro {
     /// Macro name.
     pub name: String,
@@ -136,6 +141,7 @@ pub struct Macro {
 
 /// One macro parameter.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MacroParameter {
     /// Parameter name.
     pub name: String,
@@ -145,6 +151,7 @@ pub struct MacroParameter {
 
 /// A variable binding introduced by Tera source.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Binding {
     /// Bound identifier.
     pub name: String,
@@ -154,6 +161,7 @@ pub struct Binding {
 
 /// The construct that introduced a binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BindingKind {
     /// `{% set name = value %}`.
     Set,
@@ -171,6 +179,7 @@ pub enum BindingKind {
 
 /// A variable reference recovered from an expression.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VariableReference {
     /// Variable path text as written, such as `product.name`.
     pub path: String,
@@ -180,6 +189,7 @@ pub struct VariableReference {
 
 /// A named construct reference, such as a filter, test, or global function.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NamedReference {
     /// Referenced name.
     pub name: String,
@@ -187,6 +197,7 @@ pub struct NamedReference {
 
 /// A namespaced macro call.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MacroCall {
     /// Namespace used for the call, such as `self` or an imported namespace.
     pub namespace: String,

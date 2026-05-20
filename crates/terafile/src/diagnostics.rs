@@ -88,6 +88,7 @@ pub use achitek_source::{Severity, TextPosition, TextRange};
 /// this type into an LSP diagnostic without defining its own Tera diagnostic
 /// codes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Diagnostic {
     code: DiagnosticCode,
     severity: Severity,
@@ -162,6 +163,7 @@ impl Diagnostic {
 /// for grouping diagnostics in docs and tests, while [`DiagnosticCode`] remains
 /// the stable identifier for a specific violation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DiagnosticKind {
     /// A syntax or parse violation in the source text.
     Syntax,
@@ -179,6 +181,7 @@ pub enum DiagnosticKind {
 /// released, a code should keep the same meaning. Prefer adding a new code over
 /// reusing or renumbering an existing one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DiagnosticCode {
     /// `TERA0000`: the template contains syntax that tree-sitter could not parse.
     SyntaxError,
