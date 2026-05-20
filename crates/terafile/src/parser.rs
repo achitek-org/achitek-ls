@@ -1,11 +1,64 @@
-//! Semantic parser
+use std::backtrace::Backtrace;
+use tree_sitter::{Language, Parser, Tree};
 
-use tree_sitter::{Parser, Tree};
+/// Parses Tera source text into a Tree-sitter syntax tree.
+pub fn parse(source: &str) -> Result<Tree, ParseError> {
+    let mut parser = Parser::new();
+    let language: Language = crate::tree_sitter_tera::LANGUAGE.into();
+    parser.set_language(&language)?;
+    let tree = parser
+        .parse(source, None)
+        .ok_or_else(ParseError::parse_cancelled)?;
+
+    Ok(tree)
+}
 
 /// Errors that can occur while parsing Tera source.
 #[derive(Debug)]
 pub struct ParseError {
     kind: ParseErrorKind,
+    backtrace: Backtrace,
+}
+
+impl ParseError {
+    /// Returns true when parser setup failed because the Tree-sitter language
+    /// could not be configured.
+    pub fn is_language(&self) -> bool {
+        matches!(self.kind, ParseErrorKind::Language(_))
+    }
+
+    /// Returns true when Tree-sitter did not produce a parse tree.
+    pub fn is_parse_cancelled(&self) -> bool {
+        matches!(self.kind, ParseErrorKind::ParseCancelled)
+    }
+
+    /// Returns the underlying Tree-sitter language error, if parser setup
+    /// failed.
+    pub fn language_error(&self) -> Option<&tree_sitter::LanguageError> {
+        match &self.kind {
+            ParseErrorKind::Language(source) => Some(source),
+            ParseErrorKind::ParseCancelled => None,
+        }
+    }
+
+    /// Returns the backtrace captured when the error was created.
+    pub fn backtrace(&self) -> &Backtrace {
+        &self.backtrace
+    }
+
+    fn language(source: tree_sitter::LanguageError) -> Self {
+        Self {
+            kind: ParseErrorKind::Language(source),
+            backtrace: Backtrace::capture(),
+        }
+    }
+
+    fn parse_cancelled() -> Self {
+        Self {
+            kind: ParseErrorKind::ParseCancelled,
+            backtrace: Backtrace::capture(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -15,15 +68,17 @@ enum ParseErrorKind {
 }
 
 impl std::fmt::Display for ParseError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
             ParseErrorKind::Language(error) => {
-                write!(formatter, "failed to configure the Tera parser: {error}")
+                writeln!(f, "failed to configure the Tera parser: {error}")?;
             }
             ParseErrorKind::ParseCancelled => {
-                formatter.write_str("tree-sitter did not produce a parse tree")
+                writeln!(f, "tree-sitter did not produce a parse tree")?;
             }
         }
+
+        write!(f, "backtrace:\n{}", self.backtrace)
     }
 }
 
@@ -38,18 +93,6 @@ impl std::error::Error for ParseError {
 
 impl From<tree_sitter::LanguageError> for ParseError {
     fn from(error: tree_sitter::LanguageError) -> Self {
-        Self {
-            kind: ParseErrorKind::Language(error),
-        }
+        Self::language(error)
     }
-}
-
-/// Parses Tera source text into a Tree-sitter syntax tree.
-pub fn parse(source: &str) -> Result<Tree, ParseError> {
-    let mut parser = Parser::new();
-    parser.set_language(&crate::tree_sitter_tera::LANGUAGE.into())?;
-
-    parser.parse(source, None).ok_or(ParseError {
-        kind: ParseErrorKind::ParseCancelled,
-    })
 }
