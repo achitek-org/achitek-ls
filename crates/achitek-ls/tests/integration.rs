@@ -28,6 +28,9 @@ mod hover;
 #[path = "features/prepare_rename.rs"]
 mod prepare_rename;
 
+#[path = "features/references.rs"]
+mod references;
+
 #[path = "features/selection_range.rs"]
 mod selection_range;
 
