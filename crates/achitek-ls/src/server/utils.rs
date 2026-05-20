@@ -114,6 +114,33 @@ pub(crate) fn is_template_expression_position(source: &str, position: Position) 
 }
 
 pub(crate) fn template_references_in_source(source: &str, uri: &Uri) -> Vec<TemplateReference> {
+    let Ok(analysis) = terafile::analyze(source) else {
+        return lexical_template_references_in_source(source, uri);
+    };
+    let bindings = analysis
+        .file()
+        .bindings()
+        .iter()
+        .map(|binding| binding.value.name.as_str())
+        .collect::<Vec<_>>();
+
+    analysis
+        .file()
+        .variable_references()
+        .iter()
+        .filter(|reference| !bindings.contains(&reference.value.root.as_str()))
+        .map(|reference| TemplateReference {
+            name: reference.value.root.clone(),
+            location: Location::new(uri.clone(), tera_range_to_lsp(reference.range)),
+        })
+        .collect()
+}
+
+pub(crate) fn template_references_in_path(source: &str, uri: &Uri) -> Vec<TemplateReference> {
+    lexical_template_references_in_source(source, uri)
+}
+
+fn lexical_template_references_in_source(source: &str, uri: &Uri) -> Vec<TemplateReference> {
     let mut references = Vec::new();
 
     for (row, line) in source.lines().enumerate() {
@@ -170,6 +197,20 @@ pub(crate) fn template_references_in_source(source: &str, uri: &Uri) -> Vec<Temp
     }
 
     references
+}
+
+fn tera_range_to_lsp(range: terafile::TextRange) -> Range {
+    Range {
+        start: tera_position_to_lsp(range.start),
+        end: tera_position_to_lsp(range.end),
+    }
+}
+
+fn tera_position_to_lsp(position: terafile::TextPosition) -> Position {
+    Position {
+        line: u32::try_from(position.line).expect("line should fit into u32"),
+        character: u32::try_from(position.byte).expect("column should fit into u32"),
+    }
 }
 
 fn tera_reference_context(line: &str, start: usize, end: usize) -> bool {
@@ -428,6 +469,44 @@ mod test {
         .collect::<Vec<_>>();
 
         assert_eq!(references, vec!["kind", "kind"]);
+        Ok(())
+    }
+
+    #[test]
+    fn template_references_skip_functions_filters_kwargs_and_string_contents() -> anyhow::Result<()>
+    {
+        let uri = "file:///template.tera".parse()?;
+        let references = template_references_in_source(
+            r#"Copyright {{now() | date(format="%Y")}} {{author}}"#,
+            &uri,
+        )
+        .into_iter()
+        .map(|reference| reference.name)
+        .collect::<Vec<_>>();
+
+        assert_eq!(references, vec!["author"]);
+        Ok(())
+    }
+
+    #[test]
+    fn template_references_skip_local_bindings() -> anyhow::Result<()> {
+        let uri = "file:///template.tera".parse()?;
+        let references = template_references_in_source(
+            indoc::indoc! {r#"
+                {% for item in items %}
+                  {{ item }}
+                  {{ loop.index }}
+                {% endfor %}
+                {% set title = project_name %}
+                {{ title }}
+            "#},
+            &uri,
+        )
+        .into_iter()
+        .map(|reference| reference.name)
+        .collect::<Vec<_>>();
+
+        assert_eq!(references, vec!["items", "project_name"]);
         Ok(())
     }
 }

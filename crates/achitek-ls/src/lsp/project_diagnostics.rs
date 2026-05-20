@@ -157,7 +157,7 @@ fn template_path_references(path: &Path, uri: &Uri) -> Vec<TemplateReference> {
         return Vec::new();
     };
 
-    utils::template_references_in_source(file_name, uri)
+    utils::template_references_in_path(file_name, uri)
 }
 
 fn template_paths(root: &Path) -> anyhow::Result<Vec<PathBuf>> {
@@ -364,6 +364,30 @@ mod tests {
             diagnostics[0].message,
             "unknown prompt reference `missing_prompt`"
         );
+
+        fs::remove_dir_all(&temp_root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn template_project_diagnostics_ignore_tera_builtins_and_filter_arguments() -> anyhow::Result<()>
+    {
+        let temp_root = utils::temp_dir("achitek-project-template-builtins")?;
+        fs::create_dir_all(&temp_root)?;
+        let achitek_path = temp_root.join("Achitekfile");
+        fs::write(&achitek_path, source())?;
+        let template_path = temp_root.join("README.md.tera");
+        fs::write(
+            &template_path,
+            r#"Copyright {{now() | date(format="%Y")}} {{author}}"#,
+        )?;
+        let template_uri = utils::path_to_uri(&template_path)?;
+        let state = ServerState::default();
+
+        let diagnostics = template_project_diagnostics(&template_uri, &state)?;
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].message, "unknown prompt reference `author`");
 
         fs::remove_dir_all(&temp_root)?;
         Ok(())
