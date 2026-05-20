@@ -31,6 +31,9 @@ mod prepare_rename;
 #[path = "features/references.rs"]
 mod references;
 
+#[path = "features/rename.rs"]
+mod rename;
+
 #[path = "features/selection_range.rs"]
 mod selection_range;
 
