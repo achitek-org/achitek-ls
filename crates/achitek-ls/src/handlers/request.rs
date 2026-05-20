@@ -3,6 +3,7 @@
 //! Dispatch imports this module as a single request-handler namespace, while
 //! individual feature handlers stay split into focused implementation modules.
 
+pub use super::code_action::handle as handle_code_action;
 pub use super::completion::handle as handle_completion;
 pub use super::definition::handle as handle_definition;
 pub use super::document_symbol::handle as handle_document_symbol;

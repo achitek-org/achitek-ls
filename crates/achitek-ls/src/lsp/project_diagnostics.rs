@@ -17,7 +17,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const UNKNOWN_PROMPT_CODE: &str = "ACHLS0001";
+pub(crate) const UNKNOWN_PROMPT_CODE: &str = "ACHLS0001";
 const UNUSED_PROMPT_CODE: &str = "ACHLS0002";
 
 pub(crate) fn achitekfile_diagnostics(

@@ -1,7 +1,8 @@
 use lsp_types::{
-    CompletionOptions, FoldingRangeProviderCapability, HoverProviderCapability, OneOf,
-    RenameOptions, SelectionRangeProviderCapability, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    CodeActionKind, CodeActionOptions, CodeActionProviderCapability, CompletionOptions,
+    FoldingRangeProviderCapability, HoverProviderCapability, OneOf, RenameOptions,
+    SelectionRangeProviderCapability, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextDocumentSyncOptions,
 };
 
 /// Returns the LSP capabilities advertised by the language server.
@@ -12,6 +13,13 @@ use lsp_types::{
 /// advertised here.
 pub fn make() -> ServerCapabilities {
     ServerCapabilities {
+        // Provides quick fixes for diagnostics that can be repaired with a
+        // workspace edit.
+        // Spec: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_codeAction
+        code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
+            code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
+            ..CodeActionOptions::default()
+        })),
         // Provides completion items for keywords, attributes, prompt types, and
         // dependency-expression helpers.
         // Spec: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_completion
