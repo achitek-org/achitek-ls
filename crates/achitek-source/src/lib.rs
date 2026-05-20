@@ -82,6 +82,20 @@ pub struct TextPosition {
     pub byte: usize,
 }
 
+impl TextPosition {
+    /// Creates a source position from a zero-based line and UTF-8 byte offset.
+    ///
+    /// ```
+    /// let position = achitek_source::TextPosition::new(3, 8);
+    ///
+    /// assert_eq!(position.line, 3);
+    /// assert_eq!(position.byte, 8);
+    /// ```
+    pub fn new(line: usize, byte: usize) -> Self {
+        Self { line, byte }
+    }
+}
+
 impl From<Point> for TextPosition {
     fn from(point: Point) -> Self {
         Self {
@@ -116,6 +130,22 @@ pub struct TextRange {
     pub end: TextPosition,
 }
 
+impl TextRange {
+    /// Creates a source range from start and end positions.
+    ///
+    /// ```
+    /// let range = achitek_source::TextRange::new(
+    ///     achitek_source::TextPosition::new(0, 0),
+    ///     achitek_source::TextPosition::new(0, 4),
+    /// );
+    ///
+    /// assert_eq!(range.end.byte, 4);
+    /// ```
+    pub fn new(start: TextPosition, end: TextPosition) -> Self {
+        Self { start, end }
+    }
+}
+
 impl From<Range> for TextRange {
     fn from(range: Range) -> Self {
         Self {
@@ -145,6 +175,19 @@ pub struct Spanned<T> {
     pub value: T,
     /// Source range that produced the value.
     pub range: TextRange,
+}
+
+impl<T> Spanned<T> {
+    /// Creates a spanned value from a model value and source range.
+    ///
+    /// ```
+    /// let spanned = achitek_source::Spanned::new("name", achitek_source::TextRange::default());
+    ///
+    /// assert_eq!(spanned.value, "name");
+    /// ```
+    pub fn new(value: T, range: TextRange) -> Self {
+        Self { value, range }
+    }
 }
 
 impl<T> AsRef<T> for Spanned<T> {
