@@ -177,7 +177,7 @@ pub fn build(source: &str) -> Result<EditorBuffer, ParseError> {
 
 /// Builds editor features for a single Achitek source document.
 pub fn from_source(source: &str) -> Result<EditorBuffer, ParseError> {
-    let tree = achitekfile::parse_tree(source)?;
+    let tree = achitekfile::parse(source)?;
     let analysis =
         achitekfile::analyze(source).expect("analysis should not fail after parsing succeeds");
     let syntax = SourceTree {

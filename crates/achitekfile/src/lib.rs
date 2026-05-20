@@ -2,7 +2,7 @@
 //!
 //! `achitekfile` wraps the [tree-sitter-achitekfile] grammar and exposes a
 //! small semantic API over the concrete Tree-sitter syntax tree. Start with
-//! [`analyze`] for semantic analysis or [`parse_tree`] if you need direct
+//! [`analyze`] for semantic analysis or [`parse`] if you need direct
 //! Tree-sitter access.
 //!
 //! # Examples
@@ -59,6 +59,6 @@ pub use diagnostics::{
     Diagnostic, DiagnosticCode, DiagnosticKind, Severity, TextPosition, TextRange,
 };
 #[doc(inline)]
-pub use parser::{ParseError, parse_tree};
+pub use parser::{ParseError, parse};
 #[doc(inline)]
 pub use sort::{Cycle, SortError};

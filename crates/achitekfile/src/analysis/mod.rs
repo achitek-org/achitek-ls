@@ -237,7 +237,7 @@ enum AnalysisErrorKind {
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub fn analyze(source: &str) -> Result<Analysis<'_>, AnalysisError> {
-    let tree = parser::parse_tree(source)?;
+    let tree = parser::parse(source)?;
     let file = AchitekFile::from_tree(&tree, source);
     let diagnostics = collect_diagnostics(&tree, source, &file);
 

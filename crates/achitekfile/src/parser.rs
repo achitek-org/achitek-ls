@@ -28,7 +28,7 @@ use tree_sitter::{Language, Parser, Tree};
 /// }
 /// "#;
 ///
-/// let tree = achitekfile::parse_tree(source)?;
+/// let tree = achitekfile::parse(source)?;
 ///
 /// assert_eq!(tree.root_node().kind(), "file");
 /// # Ok::<(), Box<dyn std::error::Error>>(())
@@ -38,7 +38,7 @@ use tree_sitter::{Language, Parser, Tree};
 ///
 /// Returns [`ParseError`] if the parser cannot be configured with the Achitek
 /// grammar or if Tree-sitter does not produce a tree.
-pub fn parse_tree(source: &str) -> Result<Tree, ParseError> {
+pub fn parse(source: &str) -> Result<Tree, ParseError> {
     let mut parser = Parser::new();
     let language: Language = tree_sitter_achitekfile::LANGUAGE.into();
     parser.set_language(&language)?;
@@ -51,7 +51,7 @@ pub fn parse_tree(source: &str) -> Result<Tree, ParseError> {
 
 /// Errors that can occur while parsing source text into a Tree-sitter [`Tree`].
 ///
-/// See [`parse_tree`] for an example of handling parser setup and Tree-sitter
+/// See [`parse`] for an example of handling parser setup and Tree-sitter
 /// parse failures with `?`.
 #[derive(Debug)]
 pub struct ParseError {
@@ -76,21 +76,21 @@ impl ParseError {
 
     /// Returns true when parsing was cancelled before producing a tree.
     ///
-    /// See [`parse_tree`] for a complete example.
+    /// See [`parse`] for a complete example.
     pub fn is_parse_cancelled(&self) -> bool {
         matches!(self.kind, ParseErrorKind::ParseCancelled)
     }
 
     /// Returns true when Tree-sitter rejected the Achitek grammar.
     ///
-    /// See [`parse_tree`] for a complete example.
+    /// See [`parse`] for a complete example.
     pub fn is_language(&self) -> bool {
         matches!(self.kind, ParseErrorKind::Language(_))
     }
 
     /// Returns the upstream Tree-sitter language error, if one occurred.
     ///
-    /// See [`parse_tree`] for a complete example.
+    /// See [`parse`] for a complete example.
     pub fn language_error(&self) -> Option<&tree_sitter::LanguageError> {
         match &self.kind {
             ParseErrorKind::Language(source) => Some(source),
@@ -100,7 +100,7 @@ impl ParseError {
 
     /// Returns the backtrace captured when the error was created.
     ///
-    /// See [`parse_tree`] for a complete example.
+    /// See [`parse`] for a complete example.
     pub fn backtrace(&self) -> &Backtrace {
         &self.backtrace
     }
