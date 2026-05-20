@@ -319,10 +319,7 @@ pub fn is_tera_uri(uri: &Uri) -> bool {
 }
 
 pub(crate) fn is_tera_path(path: &Path) -> bool {
-    let Some(name) = path
-        .file_name()
-        .and_then(|name| name.to_str())
-    else {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
 

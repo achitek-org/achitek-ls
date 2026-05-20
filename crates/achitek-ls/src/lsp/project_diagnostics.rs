@@ -99,10 +99,7 @@ pub(crate) fn template_diagnostics(
             &template_uri,
             &prompt_names,
         ));
-        template_diagnostics.extend(unknown_prompt_choice_diagnostics(
-            &source,
-            &prompt_catalog,
-        )?);
+        template_diagnostics.extend(unknown_prompt_choice_diagnostics(&source, &prompt_catalog)?);
         diagnostics.push((template_uri, template_diagnostics));
     }
 
@@ -137,10 +134,7 @@ pub(crate) fn template_project_diagnostics(
         &prompt_catalog,
     )?);
     diagnostics.extend(unknown_prompt_diagnostics(&source, uri, &prompt_names));
-    diagnostics.extend(unknown_prompt_choice_diagnostics(
-        &source,
-        &prompt_catalog,
-    )?);
+    diagnostics.extend(unknown_prompt_choice_diagnostics(&source, &prompt_catalog)?);
 
     Ok(diagnostics)
 }
@@ -343,10 +337,10 @@ fn collect_choice_comparisons(
     source: &str,
     comparisons: &mut Vec<ChoiceComparison>,
 ) {
-    if node.kind() == "binary_expression" {
-        if let Some(comparison) = choice_comparison(node, source) {
-            comparisons.push(comparison);
-        }
+    if node.kind() == "binary_expression"
+        && let Some(comparison) = choice_comparison(node, source)
+    {
+        comparisons.push(comparison);
     }
 
     for child in children(node) {
