@@ -1,6 +1,9 @@
 #[path = "features/completion.rs"]
 mod completion;
 
+#[path = "features/definition.rs"]
+mod definition;
+
 #[path = "features/document_symbol.rs"]
 mod document_symbol;
 
