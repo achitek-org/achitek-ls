@@ -25,7 +25,7 @@ pub struct TeraFile {
 impl TeraFile {
     /// Creates a recovered Tera model from parsed semantic facts.
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         dependencies: Vec<Spanned<TemplateDependency>>,
         macros: Vec<Spanned<Macro>>,
         bindings: Vec<Spanned<Binding>>,
