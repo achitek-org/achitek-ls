@@ -157,7 +157,7 @@ fn template_path_references(path: &Path, uri: &Uri) -> Vec<TemplateReference> {
         return Vec::new();
     };
 
-    utils::template_references_in_source(file_name, uri)
+    utils::template_references_in_path(file_name, uri)
 }
 
 fn template_paths(root: &Path) -> anyhow::Result<Vec<PathBuf>> {
