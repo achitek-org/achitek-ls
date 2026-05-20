@@ -59,6 +59,7 @@
 //! [expression]: DiagnosticKind::Expression
 //!
 //! [error]: Severity::Error
+//! [hint]: Severity::Hint
 //!
 //! [TERA0000]: DiagnosticCode::SyntaxError
 //! [TERA0001]: DiagnosticCode::UnterminatedTag
