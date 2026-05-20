@@ -42,11 +42,11 @@ pub fn parse(source: &str) -> Result<Tree, ParseError> {
     let mut parser = Parser::new();
     let language: Language = tree_sitter_achitekfile::LANGUAGE.into();
     parser.set_language(&language)?;
-    let ast: Tree = parser
+    let tree: Tree = parser
         .parse(source, None)
         .ok_or_else(ParseError::parse_cancelled)?;
 
-    Ok(ast)
+    Ok(tree)
 }
 
 /// Errors that can occur while parsing source text into a Tree-sitter [`Tree`].

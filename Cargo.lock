@@ -6,7 +6,7 @@ version = 4
 name = "achitek-ls"
 version = "0.1.1"
 dependencies = [
- "achitekfile 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "achitekfile",
  "anyhow",
  "indoc",
  "lexopt",
@@ -38,17 +38,6 @@ dependencies = [
  "indoc",
  "regex",
  "serde",
- "tree-sitter",
- "tree-sitter-achitekfile",
-]
-
-[[package]]
-name = "achitekfile"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "704393805c8893b883a2ef18c98e447fcc3c56391452358025a23697de6117a7"
-dependencies = [
- "regex",
  "tree-sitter",
  "tree-sitter-achitekfile",
 ]
@@ -378,6 +367,7 @@ dependencies = [
  "achitek-source",
  "cc",
  "indoc",
+ "serde",
  "tree-sitter",
  "tree-sitter-language",
 ]
