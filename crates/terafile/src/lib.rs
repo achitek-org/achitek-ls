@@ -1,4 +1,22 @@
-//! Tree sitter backed semantic parser for .tera files
+//! Tree-sitter backed semantic parser for Tera template source.
+//!
+//! `terafile` provides a forgiving analysis API for editor and tooling
+//! workflows. Invalid or incomplete Tera source is reported as structured
+//! diagnostics whenever Tree-sitter can still recover a syntax tree.
+//!
+//! # Example
+//!
+//! ```
+//! let analysis = terafile::analyze(r#"Hello {{ user.name | upper }}"#)?;
+//!
+//! assert!(!analysis.has_errors());
+//! assert_eq!(analysis.file().filters()[0].value.name, "upper");
+//! assert_eq!(
+//!     analysis.file().variable_references()[0].value.path,
+//!     "user.name"
+//! );
+//! # Ok::<(), terafile::AnalysisError>(())
+//! ```
 
 #![deny(missing_docs)]
 
