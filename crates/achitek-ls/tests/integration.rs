@@ -4,6 +4,9 @@ mod completion;
 #[path = "features/definition.rs"]
 mod definition;
 
+#[path = "features/did_change.rs"]
+mod did_change;
+
 #[path = "features/did_close.rs"]
 mod did_close;
 

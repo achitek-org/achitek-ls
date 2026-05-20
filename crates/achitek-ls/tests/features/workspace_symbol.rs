@@ -1,3 +1,4 @@
+use crate::utils;
 use achitek_ls::{
     handlers::request::handle_workspace_symbol,
     server::{Document, Documents, ServerState},
@@ -8,8 +9,6 @@ use lsp_types::{
     WorkspaceSymbolParams, WorkspaceSymbolResponse,
     request::{Request as LspRequest, WorkspaceSymbolRequest},
 };
-
-use crate::utils;
 
 #[test]
 fn workspace_symbol_finds_prompt_symbols_matching_query() -> anyhow::Result<()> {

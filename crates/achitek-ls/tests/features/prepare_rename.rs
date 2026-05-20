@@ -1,3 +1,4 @@
+use crate::utils;
 use achitek_ls::{
     handlers::request::handle_prepare_rename,
     server::{Document, Documents, ServerState},
@@ -7,8 +8,6 @@ use lsp_types::{
     Position, PrepareRenameResponse, TextDocumentIdentifier, TextDocumentPositionParams, Uri,
     request::{PrepareRenameRequest, Request as LspRequest},
 };
-
-use crate::utils;
 
 #[test]
 fn prepare_rename_accepts_achitekfile_prompt_name() -> anyhow::Result<()> {

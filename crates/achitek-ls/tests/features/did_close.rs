@@ -1,3 +1,4 @@
+use crate::utils;
 use achitek_ls::{
     handlers::notification::handle_did_close,
     server::{Document, Documents, ServerState},
@@ -7,8 +8,6 @@ use lsp_types::{
     DidCloseTextDocumentParams, TextDocumentIdentifier, Uri,
     notification::{DidCloseTextDocument, Notification as LspNotification},
 };
-
-use crate::utils;
 
 #[test]
 fn did_close_removes_document_and_clears_diagnostics() -> anyhow::Result<()> {

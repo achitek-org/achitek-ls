@@ -1,3 +1,4 @@
+use crate::utils;
 use achitek_ls::{
     handlers::request::handle_document_symbol,
     server::{Document, Documents, ServerState},
@@ -7,8 +8,6 @@ use lsp_types::{
     DocumentSymbolParams, DocumentSymbolResponse, TextDocumentIdentifier, Uri,
     request::{DocumentSymbolRequest, Request as LspRequest},
 };
-
-use crate::utils;
 
 #[test]
 fn document_symbol_returns_achitekfile_outline() -> anyhow::Result<()> {

@@ -1,3 +1,4 @@
+use crate::utils;
 use achitek_ls::{
     handlers::request::handle_formatting,
     server::{Document, Documents, ServerState},
@@ -7,8 +8,6 @@ use lsp_types::{
     DocumentFormattingParams, FormattingOptions, TextDocumentIdentifier, TextEdit, Uri,
     request::{Formatting, Request as LspRequest},
 };
-
-use crate::utils;
 
 #[test]
 fn formatting_returns_full_document_edit() -> anyhow::Result<()> {

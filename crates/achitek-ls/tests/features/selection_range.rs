@@ -1,3 +1,4 @@
+use crate::utils;
 use achitek_ls::{
     handlers::request::handle_selection_range,
     server::{Document, Documents, ServerState},
@@ -7,8 +8,6 @@ use lsp_types::{
     Position, SelectionRange, SelectionRangeParams, TextDocumentIdentifier, Uri,
     request::{Request as LspRequest, SelectionRangeRequest},
 };
-
-use crate::utils;
 
 #[test]
 fn selection_range_expands_from_prompt_name_to_prompt_block() -> anyhow::Result<()> {

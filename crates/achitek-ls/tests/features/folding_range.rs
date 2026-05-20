@@ -1,3 +1,4 @@
+use crate::utils;
 use achitek_ls::{
     handlers::request::handle_folding_range,
     server::{Document, Documents, ServerState},
@@ -7,8 +8,6 @@ use lsp_types::{
     FoldingRange, FoldingRangeParams, TextDocumentIdentifier, Uri,
     request::{FoldingRangeRequest, Request as LspRequest},
 };
-
-use crate::utils;
 
 #[test]
 fn folding_range_returns_foldable_achitekfile_blocks() -> anyhow::Result<()> {

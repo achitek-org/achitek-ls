@@ -1,3 +1,4 @@
+use crate::utils;
 use achitek_ls::{
     handlers::request::handle_definition,
     server::{Document, Documents, ServerState, utils as server_utils},
@@ -11,8 +12,6 @@ use lsp_types::{
     request::{GotoDefinition, Request as LspRequest},
 };
 use std::fs;
-
-use crate::utils;
 
 #[test]
 fn definition_resolves_achitekfile_prompt_reference() -> anyhow::Result<()> {

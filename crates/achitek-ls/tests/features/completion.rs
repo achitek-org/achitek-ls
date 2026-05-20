@@ -1,3 +1,4 @@
+use crate::utils;
 use achitek_ls::{
     handlers::request::handle_completion,
     server::{Document, Documents, ServerState},
@@ -9,8 +10,6 @@ use lsp_types::{
     request::{Completion, Request as LspRequest},
 };
 use std::fs;
-
-use crate::utils;
 
 #[test]
 fn completion_returns_achitekfile_prompt_attributes() -> anyhow::Result<()> {
@@ -113,7 +112,7 @@ fn valid_completion_source() -> String {
         }
 
         prompt "project_name" {
-          
+
         }
     "#}
     .to_owned()
