@@ -1,6 +1,7 @@
 use lsp_server::{Connection, Message, Request, Response};
 use lsp_types::PublishDiagnosticsParams;
 use std::path::PathBuf;
+use std::time::Duration;
 
 pub const TEST_URI: &str = "file:///workspace/achitekfile";
 
@@ -54,6 +55,19 @@ pub fn published_diagnostics_sink(
     connection: &Connection,
 ) -> anyhow::Result<PublishDiagnosticsParams> {
     match connection.receiver.recv()? {
+        Message::Notification(notification)
+            if notification.method == "textDocument/publishDiagnostics" =>
+        {
+            Ok(serde_json::from_value(notification.params)?)
+        }
+        message => anyhow::bail!("expected publishDiagnostics, got {message:?}"),
+    }
+}
+
+pub fn published_diagnostics_sink_timeout(
+    connection: &Connection,
+) -> anyhow::Result<PublishDiagnosticsParams> {
+    match connection.receiver.recv_timeout(Duration::from_secs(1))? {
         Message::Notification(notification)
             if notification.method == "textDocument/publishDiagnostics" =>
         {

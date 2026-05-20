@@ -7,6 +7,9 @@ mod definition;
 #[path = "features/did_close.rs"]
 mod did_close;
 
+#[path = "features/did_open.rs"]
+mod did_open;
+
 #[path = "features/document_symbol.rs"]
 mod document_symbol;
 
