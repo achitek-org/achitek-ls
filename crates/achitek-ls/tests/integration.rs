@@ -13,6 +13,9 @@ mod formatting;
 #[path = "features/hover.rs"]
 mod hover;
 
+#[path = "features/prepare_rename.rs"]
+mod prepare_rename;
+
 #[path = "features/selection_range.rs"]
 mod selection_range;
 
