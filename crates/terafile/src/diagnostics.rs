@@ -87,6 +87,17 @@ pub use achitek_source::{Severity, TextPosition, TextRange};
 /// map into their own reporting formats. For example, `achitek-ls` can convert
 /// this type into an LSP diagnostic without defining its own Tera diagnostic
 /// codes.
+///
+/// ```
+/// let analysis = terafile::analyze("{% endif %}")?;
+/// let diagnostic = &analysis.diagnostics()[0];
+///
+/// assert_eq!(diagnostic.code(), terafile::DiagnosticCode::UnexpectedEndTag);
+/// assert_eq!(diagnostic.kind(), terafile::DiagnosticKind::Syntax);
+/// assert_eq!(diagnostic.severity(), terafile::Severity::Error);
+/// assert_eq!(diagnostic.code().as_str(), "TERA0002");
+/// # Ok::<(), terafile::AnalysisError>(())
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Diagnostic {
@@ -162,6 +173,8 @@ impl Diagnostic {
 /// The kind describes which analysis layer produced a diagnostic. It is useful
 /// for grouping diagnostics in docs and tests, while [`DiagnosticCode`] remains
 /// the stable identifier for a specific violation.
+///
+/// See [`Diagnostic`] for a complete example.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DiagnosticKind {
@@ -180,6 +193,8 @@ pub enum DiagnosticKind {
 /// Codes are part of the public diagnostic contract for downstream tools. Once
 /// released, a code should keep the same meaning. Prefer adding a new code over
 /// reusing or renumbering an existing one.
+///
+/// See [`Diagnostic`] for a complete example.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DiagnosticCode {

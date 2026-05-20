@@ -20,6 +20,15 @@ use std::{
 };
 
 /// A forgiving analysis result for Tera source.
+///
+/// ```
+/// let analysis = terafile::analyze(r#"{% set name = "Achitek" %}Hello {{ name }}"#)?;
+///
+/// assert_eq!(analysis.source(), r#"{% set name = "Achitek" %}Hello {{ name }}"#);
+/// assert_eq!(analysis.file().bindings()[0].value.name, "name");
+/// assert!(!analysis.has_errors());
+/// # Ok::<(), terafile::AnalysisError>(())
+/// ```
 #[derive(Debug, Clone)]
 pub struct Analysis<'a> {
     source: &'a str,
@@ -55,6 +64,8 @@ impl<'a> Analysis<'a> {
 ///
 /// Normal source violations are returned as diagnostics in [`Analysis`], not as
 /// [`AnalysisError`].
+///
+/// See [`analyze`] for an example of handling analysis failures with `?`.
 #[derive(Debug)]
 pub struct AnalysisError {
     kind: AnalysisErrorKind,
@@ -119,6 +130,14 @@ enum AnalysisErrorKind {
 /// This function only returns an error when the parser cannot be configured or
 /// Tree-sitter does not produce a parse tree. Invalid Tera source is intended
 /// to be reported through [`Analysis::diagnostics`] instead.
+///
+/// ```
+/// let analysis = terafile::analyze(r#"{% include "header.html" %}"#)?;
+///
+/// assert_eq!(analysis.file().dependencies().len(), 1);
+/// assert!(analysis.diagnostics().is_empty());
+/// # Ok::<(), terafile::AnalysisError>(())
+/// ```
 ///
 /// # Errors
 ///

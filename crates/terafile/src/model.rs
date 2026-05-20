@@ -9,6 +9,22 @@
 pub use achitek_source::Spanned;
 
 /// Recovering semantic representation of one Tera template.
+///
+/// ```
+/// let analysis = terafile::analyze(
+///     r#"{% import "forms.html" as forms %}{{ forms::field(name=project_name) }}"#,
+/// )?;
+/// let file = analysis.file();
+///
+/// assert_eq!(file.dependencies().len(), 1);
+/// assert_eq!(file.macro_calls()[0].value.namespace, "forms");
+/// assert!(
+///     file.variable_references()
+///         .iter()
+///         .any(|reference| reference.value.path == "project_name")
+/// );
+/// # Ok::<(), terafile::AnalysisError>(())
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TeraFile {
@@ -92,6 +108,8 @@ impl TeraFile {
 }
 
 /// A dependency on another Tera template.
+///
+/// See [`TeraFile`] for an example of recovering template dependencies.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TemplateDependency {
@@ -102,6 +120,8 @@ pub struct TemplateDependency {
 }
 
 /// The construct that declared a template dependency.
+///
+/// See [`TeraFile`] for an example of recovering template dependencies.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TemplateDependencyKind {
@@ -120,6 +140,8 @@ pub enum TemplateDependencyKind {
 }
 
 /// Static template path information.
+///
+/// See [`TeraFile`] for an example of recovering template dependencies.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TemplatePath {
@@ -130,6 +152,8 @@ pub enum TemplatePath {
 }
 
 /// A Tera macro definition.
+///
+/// See [`TeraFile`] for an example of recovering macro definitions.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Macro {
@@ -140,6 +164,8 @@ pub struct Macro {
 }
 
 /// One macro parameter.
+///
+/// See [`Macro`] for the model that owns recovered parameters.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MacroParameter {
@@ -150,6 +176,8 @@ pub struct MacroParameter {
 }
 
 /// A variable binding introduced by Tera source.
+///
+/// See [`TeraFile`] for an example of recovering bindings.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Binding {
@@ -160,6 +188,8 @@ pub struct Binding {
 }
 
 /// The construct that introduced a binding.
+///
+/// See [`TeraFile`] for an example of recovering bindings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BindingKind {
@@ -178,6 +208,8 @@ pub enum BindingKind {
 }
 
 /// A variable reference recovered from an expression.
+///
+/// See [`TeraFile`] for an example of recovering variable references.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VariableReference {
@@ -188,6 +220,8 @@ pub struct VariableReference {
 }
 
 /// A named construct reference, such as a filter, test, or global function.
+///
+/// See [`TeraFile`] for examples of recovering named references from source.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NamedReference {
@@ -196,6 +230,8 @@ pub struct NamedReference {
 }
 
 /// A namespaced macro call.
+///
+/// See [`TeraFile`] for an example of recovering macro calls.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MacroCall {
