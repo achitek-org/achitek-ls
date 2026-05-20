@@ -6,7 +6,7 @@ use achitek_ls::{
 use indoc::indoc;
 use lsp_server::{Connection, Notification};
 use lsp_types::{
-    DidOpenTextDocumentParams, NumberOrString, TextDocumentItem, Uri,
+    DiagnosticSeverity, DidOpenTextDocumentParams, NumberOrString, TextDocumentItem, Uri,
     notification::{DidOpenTextDocument, Notification as LspNotification},
 };
 use std::fs;
@@ -182,11 +182,78 @@ fn opening_template_publishes_unknown_prompt_diagnostics() -> anyhow::Result<()>
     Ok(())
 }
 
+#[test]
+fn opening_template_publishes_unknown_select_choice_warning() -> anyhow::Result<()> {
+    let temp_root = utils::temp_dir("achitek-did-open-template-unknown-select-choice")?;
+    fs::create_dir_all(&temp_root)?;
+    let achitek_path = temp_root.join("Achitekfile");
+    fs::write(&achitek_path, source_with_license())?;
+    let template_path = temp_root.join("LICENSE.tera");
+    let template_source = "{% if license == 'recommended' -%}Recommended{% endif %}";
+    fs::write(&template_path, template_source)?;
+    let achitek_uri = server_utils::path_to_uri(&achitek_path)?;
+    let template_uri = server_utils::path_to_uri(&template_path)?;
+    let (server_connection, client_connection) = Connection::memory();
+    let notification = Notification::new(
+        DidOpenTextDocument::METHOD.to_owned(),
+        DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: template_uri.clone(),
+                language_id: "tera".to_owned(),
+                version: 1,
+                text: template_source.to_owned(),
+            },
+        },
+    );
+    let mut state = ServerState::default();
+    let params = serde_json::from_value(notification.params)?;
+
+    handle_did_open(&server_connection, &mut state, params)?;
+
+    let template_diagnostics = utils::published_diagnostics_sink_timeout(&client_connection)?;
+    assert_eq!(template_diagnostics.uri, template_uri);
+    assert_eq!(template_diagnostics.version, Some(1));
+    assert_eq!(template_diagnostics.diagnostics.len(), 1);
+    assert_eq!(
+        template_diagnostics.diagnostics[0].code,
+        Some(NumberOrString::String("ACHLS0003".to_owned()))
+    );
+    assert_eq!(
+        template_diagnostics.diagnostics[0].severity,
+        Some(DiagnosticSeverity::WARNING)
+    );
+    assert_eq!(
+        template_diagnostics.diagnostics[0].message,
+        "prompt `license` has no choice `recommended`"
+    );
+    let achitek_diagnostics = utils::published_diagnostics_sink_timeout(&client_connection)?;
+    assert_eq!(achitek_diagnostics.uri, achitek_uri);
+
+    fs::remove_dir_all(&temp_root)?;
+    Ok(())
+}
+
 fn source() -> String {
     indoc! {r#"
         blueprint {
           version = "1.0.0"
           name = "minimal"
+        }
+    "#}
+    .to_owned()
+}
+
+fn source_with_license() -> String {
+    indoc! {r#"
+        blueprint {
+          version = "1.0.0"
+          name = "minimal"
+        }
+
+        prompt "license" {
+          type = select
+          help = "License"
+          choices = ["MIT", "Apache-2.0", "GPL-2.0-only"]
         }
     "#}
     .to_owned()

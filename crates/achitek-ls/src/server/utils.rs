@@ -319,9 +319,14 @@ pub fn is_tera_uri(uri: &Uri) -> bool {
 }
 
 pub(crate) fn is_tera_path(path: &Path) -> bool {
-    path.file_name()
+    let Some(name) = path
+        .file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name.contains(".tera"))
+    else {
+        return false;
+    };
+
+    name.contains(".tera") || name.contains("{{") || name.contains("{%") || name.contains("{#")
 }
 
 pub fn path_to_uri(path: &Path) -> anyhow::Result<Uri> {
@@ -436,6 +441,9 @@ mod test {
         assert!(is_tera_path(Path::new("Cargo.toml.tera")));
         assert!(is_tera_path(Path::new(
             "{% if kind == 'bin' %}main.rs.tera{% else %}lib.rs.tera{% endif %}"
+        )));
+        assert!(is_tera_path(Path::new(
+            "{% if license == 'recommended' %}LICENSE-MIT{% endif %}"
         )));
     }
 
