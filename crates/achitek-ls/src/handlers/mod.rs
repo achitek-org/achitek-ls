@@ -1,4 +1,3 @@
-mod code_action;
 mod completion;
 mod definition;
 mod did_change;

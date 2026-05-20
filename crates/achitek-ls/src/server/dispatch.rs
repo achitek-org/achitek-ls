@@ -13,8 +13,8 @@ use lsp_types::{
         DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification as _,
     },
     request::{
-        CodeActionRequest, Completion, DocumentSymbolRequest, FoldingRangeRequest, Formatting,
-        GotoDefinition, HoverRequest, PrepareRenameRequest, References, Rename, Request as _,
+        Completion, DocumentSymbolRequest, FoldingRangeRequest, Formatting, GotoDefinition,
+        HoverRequest, PrepareRenameRequest, References, Rename, Request as _,
         SelectionRangeRequest, WorkspaceSymbolRequest,
     },
 };
@@ -30,12 +30,6 @@ pub fn handle_request(
     use crate::handlers::request as handlers;
 
     match request.method.as_str() {
-        CodeActionRequest::METHOD => on_request::<CodeActionRequest>(
-            connection,
-            state,
-            request,
-            handlers::handle_code_action,
-        ),
         DocumentSymbolRequest::METHOD => on_request::<DocumentSymbolRequest>(
             connection,
             state,
