@@ -4,6 +4,22 @@
 //! such as byte positions, source ranges, spanned values, diagnostic severity,
 //! and Tree-sitter range helpers. Domain-specific models and diagnostic codes
 //! belong in the language crates that define those contracts.
+//!
+//! # Example
+//!
+//! ```
+//! let range = achitek_source::TextRange {
+//!     start: achitek_source::TextPosition { line: 0, byte: 0 },
+//!     end: achitek_source::TextPosition { line: 0, byte: 7 },
+//! };
+//! let spanned = achitek_source::Spanned {
+//!     value: "project",
+//!     range,
+//! };
+//!
+//! assert_eq!(spanned.as_ref(), &"project");
+//! assert_eq!(spanned.range.start.line, 0);
+//! ```
 
 #![deny(missing_docs)]
 
