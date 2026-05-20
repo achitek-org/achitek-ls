@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/achitek-org/achitek-ls/compare/achitekfile-v0.2.0...achitekfile-v0.3.0)
+
+### ⛰️ Features
+
+
+- Introduce workspace - ([757e661](https://github.com/achitek-org/achitek-ls/commit/757e6617cc7402b96fb11737b778f9b42bcf7799))
+
+### 🚜 Refactor
+
+
+- *(achitekfile)* Lower syntax into model - ([1eba206](https://github.com/achitek-org/achitek-ls/commit/1eba206d577b525654701f8ef3131aa7a0328ad1))
+- Move shared utils and structs to achitek-source crate - ([9775e3e](https://github.com/achitek-org/achitek-ls/commit/9775e3e183b76cdf77b057d704d1a9e0ca24b5c7))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(achitekfile)* Rename parse_tree - ([f24c6e0](https://github.com/achitek-org/achitek-ls/commit/f24c6e010379488173aaadacb85e4a04eda3dd83))
+- Reference achitekfile locally and small refactor in parser - ([927c20e](https://github.com/achitek-org/achitek-ls/commit/927c20edddf28f042bc4bcd99658cea3e3e7ed31))
+- Update workspace - ([4d67daf](https://github.com/achitek-org/achitek-ls/commit/4d67daf8ded392abaa60ec332a2ee10f3fa4e84b))
+
+
 ## [0.2.0](https://github.com/achitek-org/achitekfile/compare/v0.1.0...v0.2.0)
 
 ### ⛰️ Features
