@@ -4,6 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Shared source analysis primitives for Achitek crates"
+authors = ["Samuel Joli <samuel.joli.ftn@gmail.com>"]
 readme = "README.md"
 repository.workspace = true
 license = "MIT OR Apache-2.0"
