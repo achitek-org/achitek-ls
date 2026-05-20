@@ -34,6 +34,7 @@ mod diagnostics {
         let code = DiagnosticCode::UndefinedVariable;
 
         assert_eq!(code.as_str(), "TERA3003");
+        assert_eq!(code.to_string(), "TERA3003");
         assert_eq!(code.kind(), DiagnosticKind::Expression);
         assert_eq!(code.severity(), Severity::Error);
         assert_eq!(code.message(), "undefined variable");

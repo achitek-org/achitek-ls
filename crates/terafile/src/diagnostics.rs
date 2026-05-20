@@ -215,6 +215,12 @@ pub enum DiagnosticCode {
     UnknownMacroNamespace,
 }
 
+impl std::fmt::Display for DiagnosticCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 impl DiagnosticCode {
     /// Returns the broad diagnostic category for this code.
     pub fn kind(&self) -> DiagnosticKind {
