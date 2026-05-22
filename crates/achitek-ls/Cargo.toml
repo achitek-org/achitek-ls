@@ -1,6 +1,6 @@
 [package]
 name = "achitek-ls"
-version = "0.1.1"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "achitekfile language server"
@@ -18,7 +18,7 @@ path = "src/main.rs"
 path = "src/lib.rs"
 
 [dependencies]
-achitekfile = { version = "0.2.0", path = "../achitekfile" }
+achitekfile = { version = "0.3.0", path = "../achitekfile" }
 terafile = { version = "0.1.1", path = "../terafile" }
 anyhow = "1.0.102"
 lexopt = "0.3.2"

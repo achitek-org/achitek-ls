@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "achitek-ls"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "achitekfile",
  "anyhow",
@@ -32,7 +32,7 @@ dependencies = [
 
 [[package]]
 name = "achitekfile"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "achitek-source",
  "indoc",
